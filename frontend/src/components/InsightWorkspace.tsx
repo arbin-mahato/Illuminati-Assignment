@@ -45,6 +45,7 @@ export function InsightWorkspace() {
           {evaluationQuestions.map((item, index) => (
             <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)} title={item}>
               <span>0{index + 1}</span><p>{item}</p><ChevronRight size={15} />
+              <span className="question-tooltip" role="tooltip">{item}</span>
             </button>
           ))}
         </nav>
@@ -65,10 +66,23 @@ export function InsightWorkspace() {
 
           <section className="suggestions" aria-labelledby="quick-start-heading">
             <div className="section-heading"><div><span className="eyebrow">Start here</span><h2 id="quick-start-heading">Recommended analyses</h2></div><span className="muted">8 evaluation-ready questions</span></div>
-            <div className="suggestion-grid">
-              {capabilities.map((capability, index) => (
-                <button key={capability} onClick={() => chooseQuestion(index)} className="suggestion"><span>0{index + 1}</span><strong>{capability}</strong><ArrowUpRight size={18} /></button>
-              ))}
+            <div className="marquee" aria-label="Recommended analyses">
+              <div className="marquee-track">
+                {[0, 1].map((copy) => (
+                  <div className="marquee-group" key={copy} aria-hidden={copy === 1}>
+                    {capabilities.map((capability, index) => (
+                      <button
+                        key={`${copy}-${capability}`}
+                        onClick={() => chooseQuestion(index)}
+                        className="suggestion"
+                        tabIndex={copy === 1 ? -1 : undefined}
+                      >
+                        <span>0{index + 1}</span><strong>{capability}</strong><ArrowUpRight size={18} />
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         </div>
