@@ -43,9 +43,8 @@ export function InsightWorkspace() {
         <div className="sidebar-label">Analysis library</div>
         <nav aria-label="Analysis questions">
           {evaluationQuestions.map((item, index) => (
-            <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)} title={item}>
+            <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)}>
               <span>0{index + 1}</span><p>{item}</p><ChevronRight size={15} />
-              <span className="question-tooltip" role="tooltip">{item}</span>
             </button>
           ))}
         </nav>
