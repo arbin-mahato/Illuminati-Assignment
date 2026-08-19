@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from pathlib import Path
+from typing import Any, Iterator, Protocol
+
+from dotenv import load_dotenv
 
 from app.data.workbook import QSRDataset
 from app.investigations.declining_stores import investigate_all_declining_stores
@@ -104,21 +107,34 @@ class QueryRouter:
         self._model = model
 
     def route(self, question: str) -> Route:
+        local_route = self._local_route(question)
+        if self._model is None:
+            return local_route or Route("UNSUPPORTED", None)
+
+        # A configured model plans every request. Local matching is only a validated
+        # contingency path when the model is unavailable or returns an unsupported plan.
+        try:
+            response = self._model.complete_json(
+                system_prompt=(
+                    "You are the routing agent for a QSR analytics application. Return JSON only: "
+                    '{"intent":"one allowed intent"}. Allowed intents: ' + ", ".join(self._routes_by_intent)
+                ),
+                user_prompt=question,
+            )
+            intent = response.get("intent")
+            model_route = self._routes_by_intent.get(intent)
+            if model_route:
+                return model_route
+        except Exception:
+            pass
+        return local_route or Route("UNSUPPORTED", None)
+
+    def _local_route(self, question: str) -> Route | None:
         normalized = question.casefold()
         for phrase, route in self._local_routes:
             if phrase in normalized:
                 return route
-        if self._model is None:
-            return Route("UNSUPPORTED", None)
-        response = self._model.complete_json(
-            system_prompt=(
-                "Classify the QSR analytics request. Return JSON only: "
-                '{"intent":"one allowed intent"}. Allowed intents: ' + ", ".join(self._routes_by_intent)
-            ),
-            user_prompt=question,
-        )
-        intent = response.get("intent")
-        return self._routes_by_intent.get(intent, Route("UNSUPPORTED", None))
+        return None
 
 
 class InsightNarrator:
@@ -157,6 +173,7 @@ class AnalyticsOrchestrator:
 
     @classmethod
     def from_environment(cls, dataset: QSRDataset) -> "AnalyticsOrchestrator":
+        load_dotenv(Path(__file__).resolve().parents[3] / ".env")
         api_key = os.getenv("GROQ_API_KEY")
         model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         model = GroqTextModel(api_key, model_name) if api_key else None
@@ -183,6 +200,51 @@ class AnalyticsOrchestrator:
         state.answer = self._narrator.narrate(state)
         state.trace.append(AgentTraceEvent("narrator", "compose_insight", "Generated an evidence-grounded answer."))
         return state
+
+    def run_events(self, question: str) -> Iterator[tuple[str, dict[str, Any]]]:
+        """Yield a small, bounded SSE-friendly event stream for one analysis request."""
+        state = AnalysisState(question=question.strip())
+        if not state.question:
+            raise ValueError("Question cannot be blank")
+
+        yield "progress", {"agent": "router", "status": "working", "detail": "Interpreting the business question."}
+        state.route = self._router.route(state.question)
+        state.trace.append(AgentTraceEvent("router", "route_question", state.route.intent))
+        yield "progress", {"agent": "router", "status": "complete", "detail": f"Selected {state.route.intent}."}
+        if state.route.intent == "UNSUPPORTED":
+            state.answer = "I can answer QSR questions about revenue, stores, channels, SKUs, calendar performance, and declining stores."
+            yield "final", _state_payload(state)
+            return
+
+        if state.route.requires_investigation:
+            yield "progress", {"agent": "investigator", "status": "working", "detail": "Investigating declining stores across operational dimensions."}
+            state.investigation_result = investigate_all_declining_stores(self._dataset)
+            state.trace.append(AgentTraceEvent("investigator", "collect_evidence", "Investigated every consistently declining store."))
+            yield "progress", {"agent": "investigator", "status": "complete", "detail": "Collected store, channel, SKU, and promotion evidence."}
+        elif state.route.tool_name:
+            yield "progress", {"agent": "analytics_tool", "status": "working", "detail": f"Running verified {state.route.tool_name} analysis."}
+            state.tool_result = TOOL_REGISTRY[state.route.tool_name](self._dataset)
+            state.trace.append(AgentTraceEvent("analytics_tool", "execute", state.route.tool_name))
+            yield "progress", {"agent": "analytics_tool", "status": "complete", "detail": "Verified calculations are ready."}
+
+        yield "progress", {"agent": "narrator", "status": "working", "detail": "Composing an evidence-grounded business insight."}
+        state.answer = self._narrator.narrate(state)
+        state.trace.append(AgentTraceEvent("narrator", "compose_insight", "Generated an evidence-grounded answer."))
+        yield "progress", {"agent": "narrator", "status": "complete", "detail": "Insight is ready."}
+        yield "final", _state_payload(state)
+
+
+def _state_payload(state: AnalysisState) -> dict[str, Any]:
+    assert state.route is not None
+    assert state.answer is not None
+    return {
+        "question": state.question,
+        "intent": state.route.intent,
+        "answer": state.answer,
+        "tool_result": state.tool_result,
+        "investigation_result": state.investigation_result,
+        "trace": [event.__dict__ for event in state.trace],
+    }
 
 
 def _deterministic_summary(route: Route | None, evidence: dict[str, Any]) -> str:
