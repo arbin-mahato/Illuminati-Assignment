@@ -5,10 +5,10 @@ An agentic analytics application for QSR business data. It uses plain Python orc
 ## Agent flow
 
 ```text
-Question → Router Agent → Verified analytics tool → [Decline Investigator] → Insight Agent → Response
+Question → Router Agent → Verified analytics tool → [Decline Investigator] → Insight Agent → SSE progress stream → Response
 ```
 
-Every number is computed by a tested analytics tool; the model never writes SQL.
+Groq is the production agent brain: it creates a structured routing plan and composes the final evidence-grounded business insight. Every number is still computed by a tested analytics tool; the model never writes SQL. A deterministic fallback keeps the eight evaluation questions demonstrable if Groq is unavailable.
 
 ## Local run
 
@@ -20,14 +20,14 @@ docker compose up --build
 
 Open `http://localhost:3000`. The API health endpoint is `http://localhost:8000/api/health`.
 
-For local development without Docker, create a Python environment, install `backend/requirements.txt`, then run:
+For local development without Docker, create a Python environment, install `backend/requirements.txt`, then run these in separate terminals:
 
 ```bash
-PYTHONPATH=backend uvicorn app.main:app --reload
-npm --prefix frontend run dev
+make api
+make web
 ```
 
-Use `.env.example` as a reference; do not commit a `.env` file. Exact evaluation questions work without Groq. Set `GROQ_API_KEY` only when you want structured routing of question variants and model-generated evidence narration.
+Create a root `.env` by copying `.env.example`; do not commit it. The API automatically loads that file when started with `make api`. Set `GROQ_API_KEY` for the full agentic workflow. The UI uses SSE to show routing, tool execution, investigation, and narration as they occur.
 
 ## Verification
 
