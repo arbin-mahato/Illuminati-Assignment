@@ -43,3 +43,15 @@ def test_chat_executes_q8_workflow(client: TestClient) -> None:
 def test_chat_rejects_blank_question(client: TestClient) -> None:
     response = client.post("/api/chat", json={"question": " "})
     assert response.status_code == 400
+
+
+def test_streaming_chat_emits_progress_and_a_final_payload(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat/stream",
+        json={"question": "How does revenue and average order value vary across different channels?"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: progress" in response.text
+    assert "event: final" in response.text
+    assert "CHANNEL_PERFORMANCE" in response.text
