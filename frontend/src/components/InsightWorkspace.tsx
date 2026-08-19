@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, UserRound } from 'lucide-react';
-import { AnalysisResponse, ProgressEvent, streamAnalysis } from '@/lib/api';
+import { AnalysisResponse, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
 import { InsightPanels } from '@/components/InsightPanels';
 import { evaluationQuestions } from '@/lib/questions';
 
@@ -70,7 +70,12 @@ function Landing({ onChoose }: { onChoose: (index: number) => void }) {
 }
 
 function Conversation({ messages }: { messages: ConversationItem[] }) {
-  return <section className="conversation" aria-live="polite">{messages.map((message) => message.role === 'user' ? <article className="message user-message" key={message.id}><div><span className="message-label">Your question</span><p>{message.content}</p></div><span className="message-avatar"><UserRound size={17} /></span></article> : <article className="message agent-message" key={message.id}><span className="message-avatar agent-avatar"><Bot size={18} /></span><div className="agent-response"><div className="message-label">QSR Insight Agent</div>{message.response ? <><div className="answer-card"><div className="result-label"><span>Verified insight</span><span>{message.response.intent.replaceAll('_', ' ')}</span></div><h2>{message.response.answer}</h2><Trace progress={message.progress ?? []} /></div><InsightPanels response={message.response} /></> : <Progress progress={message.progress ?? []} />}</div></article>)}</section>;
+  return <section className="conversation" aria-live="polite">{messages.map((message) => message.role === 'user' ? <article className="message user-message" key={message.id}><div><span className="message-label">Your question</span><p>{message.content}</p></div><span className="message-avatar"><UserRound size={17} /></span></article> : <article className="message agent-message" key={message.id}><span className="message-avatar agent-avatar"><Bot size={18} /></span><div className="agent-response"><div className="message-label">QSR Insight Agent</div>{message.response ? <><InsightNarrative insight={message.response.insight} fallback={message.response.answer} intent={message.response.intent} /><InsightPanels response={message.response} /><Trace progress={message.progress ?? []} /></> : <Progress progress={message.progress ?? []} />}</div></article>)}</section>;
+}
+
+function InsightNarrative({ insight, fallback, intent }: { insight: InsightContent | null; fallback: string; intent: string }) {
+  const content = insight ?? { headline: intent.replaceAll('_', ' '), summary: fallback, key_findings: [], recommended_actions: [], caveat: 'All metrics are calculated from the supplied workbook.' };
+  return <section className="answer-card"><div className="result-label"><span>Verified insight</span><span>{intent.replaceAll('_', ' ')}</span></div><h2>{content.headline}</h2><p className="executive-summary">{content.summary}</p>{(content.key_findings.length > 0 || content.recommended_actions.length > 0) && <div className="insight-grid">{content.key_findings.length > 0 && <div><h3>What the data says</h3><ul>{content.key_findings.map((finding) => <li key={finding}>{finding}</li>)}</ul></div>}{content.recommended_actions.length > 0 && <div><h3>Recommended next step</h3><ul>{content.recommended_actions.map((action) => <li key={action}>{action}</li>)}</ul></div>}</div>}<p className="caveat">{content.caveat}</p></section>;
 }
 
 function Progress({ progress }: { progress: ProgressEvent[] }) { const latest = progress.at(-1); return <div className="progress-card"><LoaderCircle className="spin" size={20} /><div><strong>{latest?.detail ?? 'Starting the analysis…'}</strong><p>Streaming the agent workflow in real time.</p></div><Trace progress={progress} /></div>; }

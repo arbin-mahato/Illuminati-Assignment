@@ -38,3 +38,22 @@ nav { display:grid; gap:3px; }.question-link { position:relative; width:100%; pa
 .table-wrap td:not(:first-child) { text-align:left; }
 .table-wrap td.numeric { text-align:right; }
 @media (max-width:900px) { .data-grid { grid-template-columns:1fr; } }
+
+.answer-card h2 { margin-bottom:8px; }
+.executive-summary { max-width:920px; margin:0; color:var(--ink); font-size:16px; line-height:1.65; }
+.insight-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:20px; }
+.insight-grid > div { padding:15px; border:1px solid #b9c9e6; border-radius:10px; background:#f8fbff; }
+.insight-grid h3 { margin:0 0 9px; color:var(--blue); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.insight-grid ul { margin:0; padding-left:18px; color:var(--ink); font-size:13px; line-height:1.55; }
+.caveat { margin:16px 0 0; padding-top:12px; border-top:1px solid #c8d4e9; color:var(--muted); font-size:12px; line-height:1.5; }
+.driver-grid { display:grid; gap:10px; margin-top:16px; }
+.driver-card { border:1px solid var(--line); border-radius:12px; background:var(--paper); overflow:hidden; }
+.driver-card summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; cursor:pointer; list-style:none; }
+.driver-card summary::-webkit-details-marker { display:none; }
+.driver-card summary strong,.driver-card summary > span:last-child { color:var(--blue); font-size:13px; }
+.driver-card summary small { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
+.driver-card > p { margin:0 18px 14px; color:var(--ink); font-size:13px; line-height:1.55; }
+.driver-metrics { display:flex; gap:12px; margin:0 18px 16px; }
+.driver-metrics span { flex:1; padding:10px; border-radius:8px; background:#f4f6ee; }.driver-metrics small { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }.driver-metrics strong { display:block; margin-top:4px; font-size:16px; }
+.driver-card .evidence-panel { margin:0; border:0; border-top:1px solid var(--line); border-radius:0; }
+@media (max-width:620px) { .insight-grid { grid-template-columns:1fr; }.driver-card summary { align-items:flex-start; flex-direction:column; }.driver-metrics { flex-direction:column; } }

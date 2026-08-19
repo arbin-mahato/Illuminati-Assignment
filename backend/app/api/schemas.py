@@ -21,6 +21,7 @@ class ChatResponse(BaseModel):
     question: str
     intent: str
     answer: str
+    insight: Optional[Dict[str, Any]] = None
     tool_result: Optional[Dict[str, Any]] = None
     investigation_result: Optional[Dict[str, Any]] = None
     trace: List[TraceEventResponse]

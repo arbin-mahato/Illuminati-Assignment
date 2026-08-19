@@ -68,6 +68,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
             question=state.question,
             intent=state.route.intent,
             answer=state.answer,
+            insight=state.insight,
             tool_result=state.tool_result,
             investigation_result=state.investigation_result,
             trace=[TraceEventResponse(**event.__dict__) for event in state.trace],
