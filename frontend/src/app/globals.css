@@ -22,3 +22,19 @@ nav { display:grid; gap:3px; }.question-link { position:relative; width:100%; pa
 @media (prefers-reduced-motion:reduce) { .marquee-track { animation:none; } }.marquee-track:focus-within { animation-play-state:paused; }
 @media (max-width:900px) { body { overflow:auto; }.app-shell,.app-shell.sidebar-collapsed { height:auto; min-height:100dvh; grid-template-columns:1fr; overflow:visible; }.sidebar { display:none; }.composer,.sidebar-collapsed .composer { left:0; }.suggestion { width:210px; }.metric-grid { grid-template-columns:1fr; } }
 @media (max-width:560px) { .topbar { height:auto; padding:20px; }.topbar h1 { font-size:24px; }.help-button { font-size:0; padding:9px; }.content { padding:25px 18px 155px; }.hero-card { min-height:0; padding:25px; }.hero-orbit { display:none; }.section-heading { display:block; }.muted { display:block; margin-top:7px; } .composer { padding:13px 18px 16px; }.suggestion { width:195px; }.message { gap:8px; }.message-avatar { width:31px; height:31px; }.user-message > div { max-width:calc(100% - 40px); }.answer-card,.progress-card,.evidence-panel { padding:17px; }.metric-card { min-height:130px; } }
+
+/* Response information hierarchy: narrative first, then readable quantitative evidence. */
+.answer-card h2 { max-width:980px; font-size:clamp(19px,1.8vw,25px); line-height:1.48; letter-spacing:-.012em; }
+.data-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:16px; }
+.evidence-panel { margin-top:16px; padding:24px; }
+.data-grid .evidence-panel { margin-top:0; }
+.chart-panel { min-height:330px; }
+.table-wrap table { min-width:560px; margin-top:0; }
+.table-wrap th { padding:0 12px 12px; }
+.table-wrap td { padding:14px 12px; }
+.table-wrap th:first-child,.table-wrap td:first-child { padding-left:0; }
+.table-wrap th:last-child,.table-wrap td:last-child { padding-right:0; }
+.table-wrap .numeric { text-align:right; font-variant-numeric:tabular-nums; }
+.table-wrap td:not(:first-child) { text-align:left; }
+.table-wrap td.numeric { text-align:right; }
+@media (max-width:900px) { .data-grid { grid-template-columns:1fr; } }

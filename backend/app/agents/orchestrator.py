@@ -151,9 +151,10 @@ class InsightNarrator:
         try:
             response = self._model.complete_json(
                 system_prompt=(
-                    "Write a concise QSR business insight in JSON: {\"answer\": \"...\"}. "
+                    "Write one concise QSR executive insight in JSON: {\"answer\": \"...\"}. "
                     "Use only the provided verified evidence. Do not calculate new numbers, invent facts, "
-                    "or claim causation from correlation."
+                    "or claim causation from correlation. Limit the answer to 55 words. State only the "
+                    "most decision-relevant pattern; detailed rankings and metrics are rendered separately."
                 ),
                 user_prompt=json.dumps({"question": state.question, "evidence": evidence}, default=str),
             )
