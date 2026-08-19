@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, PanelLeftClose, PanelLeftOpen, Send, Sparkles } from 'lucide-react';
+import { FormEvent, useState } from 'react';
+import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles } from 'lucide-react';
+import { AnalysisResponse, runAnalysis } from '@/lib/api';
 import { evaluationQuestions } from '@/lib/questions';
 
 const capabilities = [
@@ -19,10 +20,27 @@ export function InsightWorkspace() {
   const [question, setQuestion] = useState('');
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   function chooseQuestion(index: number) {
     setSelectedQuestion(index);
     setQuestion(evaluationQuestions[index]);
+  }
+
+  async function submitQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!question.trim() || isLoading) return;
+    setError(null);
+    setIsLoading(true);
+    try {
+      setResult(await runAnalysis(question.trim()));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to complete analysis.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -84,11 +102,21 @@ export function InsightWorkspace() {
               </div>
             </div>
           </section>
+          {result && (
+            <section className="result-card" aria-live="polite">
+              <div className="result-label"><span>Verified insight</span><span>{result.intent.replaceAll('_', ' ')}</span></div>
+              <h2>{result.answer}</h2>
+              <div className="trace-list">
+                {result.trace.map((event) => <span key={`${event.agent}-${event.action}`}><strong>{event.agent}</strong> · {event.detail}</span>)}
+              </div>
+            </section>
+          )}
+          {error && <p className="error-message" role="alert">{error}</p>}
         </div>
 
-        <form className="composer" onSubmit={(event) => event.preventDefault()}>
+        <form className="composer" onSubmit={submitQuestion}>
           <label htmlFor="question">What would you like to understand?</label>
-          <div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Which cities are losing revenue?" /><button type="submit" disabled={!question.trim()} aria-label="Run analysis"><Send size={19} /></button></div>
+          <div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Which cities are losing revenue?" /><button type="submit" disabled={!question.trim() || isLoading} aria-label="Run analysis">{isLoading ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>
           <p>Every answer will show the agent path and dataset evidence.</p>
         </form>
       </section>
