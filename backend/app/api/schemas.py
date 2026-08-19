@@ -1,0 +1,36 @@
+"""Public, versioned request and response schemas."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1_000, description="Natural-language QSR analytics question.")
+
+
+class TraceEventResponse(BaseModel):
+    agent: str
+    action: str
+    detail: str
+
+
+class ChatResponse(BaseModel):
+    question: str
+    intent: str
+    answer: str
+    tool_result: dict[str, Any] | None = None
+    investigation_result: dict[str, Any] | None = None
+    trace: list[TraceEventResponse]
+
+
+class HealthResponse(BaseModel):
+    status: str
+
+
+class DatasetMetadataResponse(BaseModel):
+    max_order_date: str
+    order_count: int
+    store_count: int
