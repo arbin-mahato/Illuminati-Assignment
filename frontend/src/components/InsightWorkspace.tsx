@@ -1,14 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, Send, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, PanelLeftClose, PanelLeftOpen, Send, Sparkles } from 'lucide-react';
 import { evaluationQuestions } from '@/lib/questions';
 
-const capabilities = ['Revenue & orders', 'Store performance', 'Channel mix', 'SKU demand', 'Trend diagnosis'];
+const capabilities = [
+  'Revenue & orders',
+  'Store performance',
+  'Channel mix',
+  'SKU demand',
+  'City decline',
+  'Weekend comparison',
+  'Festive impact',
+  'Root-cause analysis',
+];
 
 export function InsightWorkspace() {
   const [question, setQuestion] = useState('');
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   function chooseQuestion(index: number) {
     setSelectedQuestion(index);
@@ -16,15 +26,24 @@ export function InsightWorkspace() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
         <a className="brand" href="#top" aria-label="QSR Insight Studio home">
           <span className="brand-mark">Q</span><span>QSR Insight<br /><strong>Studio</strong></span>
         </a>
+        <button
+          className="sidebar-toggle"
+          type="button"
+          onClick={() => setIsSidebarCollapsed((value) => !value)}
+          aria-label={isSidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={isSidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+        >
+          {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
         <div className="sidebar-label">Analysis library</div>
         <nav aria-label="Analysis questions">
           {evaluationQuestions.map((item, index) => (
-            <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)}>
+            <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)} title={item}>
               <span>0{index + 1}</span><p>{item}</p><ChevronRight size={15} />
             </button>
           ))}
