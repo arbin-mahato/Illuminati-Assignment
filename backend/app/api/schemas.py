@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,9 +21,9 @@ class ChatResponse(BaseModel):
     question: str
     intent: str
     answer: str
-    tool_result: dict[str, Any] | None = None
-    investigation_result: dict[str, Any] | None = None
-    trace: list[TraceEventResponse]
+    tool_result: Optional[Dict[str, Any]] = None
+    investigation_result: Optional[Dict[str, Any]] = None
+    trace: List[TraceEventResponse]
 
 
 class HealthResponse(BaseModel):
