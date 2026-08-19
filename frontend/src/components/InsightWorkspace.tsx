@@ -1,0 +1,65 @@
+'use client';
+
+import { useState } from 'react';
+import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, Send, Sparkles } from 'lucide-react';
+import { evaluationQuestions } from '@/lib/questions';
+
+const capabilities = ['Revenue & orders', 'Store performance', 'Channel mix', 'SKU demand', 'Trend diagnosis'];
+
+export function InsightWorkspace() {
+  const [question, setQuestion] = useState('');
+  const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
+
+  function chooseQuestion(index: number) {
+    setSelectedQuestion(index);
+    setQuestion(evaluationQuestions[index]);
+  }
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <a className="brand" href="#top" aria-label="QSR Insight Studio home">
+          <span className="brand-mark">Q</span><span>QSR Insight<br /><strong>Studio</strong></span>
+        </a>
+        <div className="sidebar-label">Analysis library</div>
+        <nav aria-label="Analysis questions">
+          {evaluationQuestions.map((item, index) => (
+            <button className={`question-link ${selectedQuestion === index ? 'selected' : ''}`} key={item} onClick={() => chooseQuestion(index)}>
+              <span>0{index + 1}</span><p>{item}</p><ChevronRight size={15} />
+            </button>
+          ))}
+        </nav>
+        <div className="data-note"><Database size={17} /><span><strong>Verified dataset</strong><br />20,000 orders · 50 stores</span></div>
+      </aside>
+
+      <section className="workspace" id="top">
+        <header className="topbar">
+          <div><span className="eyebrow">Operations intelligence</span><h1>Ask the business data.</h1></div>
+          <button className="help-button"><CircleHelp size={17} /> How it works</button>
+        </header>
+
+        <div className="content">
+          <section className="hero-card">
+            <div className="hero-copy"><span className="agent-badge"><Sparkles size={14} /> Agentic QSR analytics</span><h2>Clear decisions, grounded in your operational data.</h2><p>Ask in plain English. The analysis engine chooses a verified tool, queries the workbook, and explains the result with supporting evidence.</p></div>
+            <div className="hero-orbit" aria-hidden="true"><Bot size={42} /><span>AI</span></div>
+          </section>
+
+          <section className="suggestions" aria-labelledby="quick-start-heading">
+            <div className="section-heading"><div><span className="eyebrow">Start here</span><h2 id="quick-start-heading">Recommended analyses</h2></div><span className="muted">8 evaluation-ready questions</span></div>
+            <div className="suggestion-grid">
+              {capabilities.map((capability, index) => (
+                <button key={capability} onClick={() => chooseQuestion(index)} className="suggestion"><span>0{index + 1}</span><strong>{capability}</strong><ArrowUpRight size={18} /></button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <form className="composer" onSubmit={(event) => event.preventDefault()}>
+          <label htmlFor="question">What would you like to understand?</label>
+          <div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Which cities are losing revenue?" /><button type="submit" disabled={!question.trim()} aria-label="Run analysis"><Send size={19} /></button></div>
+          <p>Every answer will show the agent path and dataset evidence.</p>
+        </form>
+      </section>
+    </main>
+  );
+}

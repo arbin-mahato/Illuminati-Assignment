@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+
+# Node.js / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment and local data artifacts
+.env
+.env.*
+!.env.example
+*.duckdb
+*.duckdb.wal
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
