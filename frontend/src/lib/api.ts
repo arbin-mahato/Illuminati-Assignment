@@ -8,9 +8,18 @@ export interface AnalysisResponse {
   question: string;
   intent: string;
   answer: string;
+  insight: InsightContent | null;
   tool_result: Record<string, unknown> | null;
   investigation_result: Record<string, unknown> | null;
   trace: AgentTraceEvent[];
+}
+
+export interface InsightContent {
+  headline: string;
+  summary: string;
+  key_findings: string[];
+  recommended_actions: string[];
+  caveat: string;
 }
 
 export interface ProgressEvent {

@@ -55,3 +55,26 @@ def test_streaming_chat_emits_progress_and_a_final_payload(client: TestClient) -
     assert "event: progress" in response.text
     assert "event: final" in response.text
     assert "CHANNEL_PERFORMANCE" in response.text
+
+
+@pytest.mark.parametrize(
+    ("question", "intent"),
+    [
+        ("What were the total revenue, orders, and average order value for the last 3 months?", "OVERALL_METRICS"),
+        ("Which are the top 5 and bottom 5 stores by revenue?", "STORE_RANKINGS"),
+        ("How does revenue and average order value vary across different channels?", "CHANNEL_PERFORMANCE"),
+        ("Which are the top 5 SKUs by quantity sold and revenue?", "SKU_PERFORMANCE"),
+        ("Which cities have shown a decline in revenue over the last 3 months?", "CITY_REVENUE_TRENDS"),
+        ("How does weekend performance compare with weekdays?", "WEEKEND_VS_WEEKDAY"),
+        ("How does festive-period performance compare with normal periods?", "FESTIVE_VS_NORMAL"),
+        ("Which stores have consistently declined in the last 3 months, and what are the key reasons?", "STORE_DECLINE_DIAGNOSIS"),
+    ],
+)
+def test_every_evaluation_question_returns_a_structured_insight(client: TestClient, question: str, intent: str) -> None:
+    response = client.post("/api/chat", json={"question": question})
+    body = response.json()
+    assert response.status_code == 200
+    assert body["intent"] == intent
+    assert body["insight"]["headline"]
+    assert body["insight"]["summary"]
+    assert body["insight"]["caveat"]

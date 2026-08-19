@@ -75,6 +75,7 @@ class AnalysisState:
     tool_result: dict[str, Any] | None = None
     investigation_result: dict[str, Any] | None = None
     answer: str | None = None
+    insight: dict[str, Any] | None = None
     trace: list[AgentTraceEvent] = field(default_factory=list)
 
 
@@ -143,23 +144,23 @@ class InsightNarrator:
     def __init__(self, model: TextModel | None = None) -> None:
         self._model = model
 
-    def narrate(self, state: AnalysisState) -> str:
+    def narrate(self, state: AnalysisState) -> dict[str, Any]:
         evidence = state.investigation_result or state.tool_result or {}
-        fallback = _deterministic_summary(state.route, evidence)
+        fallback = _deterministic_insight(state.route, evidence)
         if self._model is None:
             return fallback
         try:
             response = self._model.complete_json(
                 system_prompt=(
-                    "Write one concise QSR executive insight in JSON: {\"answer\": \"...\"}. "
+                    "Return a QSR executive insight as JSON with exactly these fields: "
+                    '{"headline":"...","summary":"...","key_findings":["..."],"recommended_actions":["..."],"caveat":"..."}. '
                     "Use only the provided verified evidence. Do not calculate new numbers, invent facts, "
-                    "or claim causation from correlation. Limit the answer to 55 words. State only the "
-                    "most decision-relevant pattern; detailed rankings and metrics are rendered separately."
+                    "or claim causation from correlation. Keep the summary under 55 words, provide 2–3 useful "
+                    "findings and 1–2 practical actions. Detailed rankings and metrics are rendered separately."
                 ),
                 user_prompt=json.dumps({"question": state.question, "evidence": evidence}, default=str),
             )
-            answer = response.get("answer")
-            return answer if isinstance(answer, str) and answer.strip() else fallback
+            return _validated_insight(response, fallback)
         except Exception:
             return fallback
 
@@ -198,7 +199,8 @@ class AnalyticsOrchestrator:
             state.tool_result = TOOL_REGISTRY[state.route.tool_name](self._dataset)
             state.trace.append(AgentTraceEvent("analytics_tool", "execute", state.route.tool_name))
 
-        state.answer = self._narrator.narrate(state)
+        state.insight = self._narrator.narrate(state)
+        state.answer = state.insight["summary"]
         state.trace.append(AgentTraceEvent("narrator", "compose_insight", "Generated an evidence-grounded answer."))
         return state
 
@@ -229,7 +231,8 @@ class AnalyticsOrchestrator:
             yield "progress", {"agent": "analytics_tool", "status": "complete", "detail": "Verified calculations are ready."}
 
         yield "progress", {"agent": "narrator", "status": "working", "detail": "Composing an evidence-grounded business insight."}
-        state.answer = self._narrator.narrate(state)
+        state.insight = self._narrator.narrate(state)
+        state.answer = state.insight["summary"]
         state.trace.append(AgentTraceEvent("narrator", "compose_insight", "Generated an evidence-grounded answer."))
         yield "progress", {"agent": "narrator", "status": "complete", "detail": "Insight is ready."}
         yield "final", _state_payload(state)
@@ -242,40 +245,54 @@ def _state_payload(state: AnalysisState) -> dict[str, Any]:
         "question": state.question,
         "intent": state.route.intent,
         "answer": state.answer,
+        "insight": state.insight,
         "tool_result": state.tool_result,
         "investigation_result": state.investigation_result,
         "trace": [event.__dict__ for event in state.trace],
     }
 
 
-def _deterministic_summary(route: Route | None, evidence: dict[str, Any]) -> str:
+def _deterministic_insight(route: Route | None, evidence: dict[str, Any]) -> dict[str, Any]:
     """Provide a reliable offline response, including when a Groq request is unavailable."""
     if route is None:
-        return "No analysis route was selected."
+        return _insight("Analysis unavailable", "No analysis route was selected.")
     if route.intent == "OVERALL_METRICS":
-        return (
-            f"From {evidence['period']['start']} to {evidence['period']['end']}, revenue was ₹{evidence['total_revenue']:,.2f} "
-            f"from {evidence['total_orders']:,} orders, with an average order value of ₹{evidence['average_order_value']:,.2f}."
-        )
+        return _insight("Three-month performance overview", f"From {evidence['period']['start']} to {evidence['period']['end']}, revenue was ₹{evidence['total_revenue']:,.2f} from {evidence['total_orders']:,} orders, with an average order value of ₹{evidence['average_order_value']:,.2f}.", ["Review the month-by-month trend before setting the next revenue target."], ["Prioritize the month with the strongest order and AOV opportunity."])
     if route.intent == "STORE_RANKINGS":
-        return f"Top store: {evidence['top_stores'][0]['store_name']}; lowest-ranked store: {evidence['bottom_stores'][0]['store_name']}."
+        return _insight("Store performance ranking", f"{evidence['top_stores'][0]['store_name']} leads revenue, while {evidence['bottom_stores'][0]['store_name']} is the lowest-ranked store in the dataset.", ["Compare the top performer’s channel and product mix with lower-ranked stores."], ["Create a focused recovery plan for the bottom-five stores."])
     if route.intent == "CHANNEL_PERFORMANCE":
         leader = evidence["channels"][0]
-        return f"{leader['channel']} is the largest channel, generating ₹{leader['revenue']:,.2f} ({leader['revenue_share_pct']}% of revenue)."
+        return _insight("Channel performance", f"{leader['channel']} is the largest channel, generating ₹{leader['revenue']:,.2f} and {leader['revenue_share_pct']}% of revenue.", ["Use revenue share and AOV together when comparing channels."], ["Protect the leading channel while testing AOV improvement in lower-value channels."])
     if route.intent == "SKU_PERFORMANCE":
         quantity_leader = evidence["top_by_quantity"][0]
         revenue_leader = evidence["top_by_revenue"][0]
-        return f"Volume leader: {quantity_leader['sku_name']}; revenue leader: {revenue_leader['sku_name']}."
+        return _insight("SKU performance", f"{quantity_leader['sku_name']} leads unit volume, while {revenue_leader['sku_name']} generates the most revenue.", ["Volume and revenue leaders are not necessarily the same product."], ["Protect availability of leading SKUs and test attach-rate offers for high-value items."])
     if route.intent == "CITY_REVENUE_TRENDS":
         cities = evidence["declining_cities"]
-        return "Declining cities: " + (", ".join(city["city"] for city in cities) if cities else "none") + "."
+        city_names = ", ".join(city["city"] for city in cities) if cities else "none"
+        return _insight("City revenue trend", f"Cities with a May-to-July revenue decline: {city_names}.", ["The trend is measured from the first to final month, not a causal diagnosis."], ["Review store-level drivers in declining cities before changing local promotions."])
     if route.intent == "WEEKEND_VS_WEEKDAY":
-        return "Weekend and weekday performance has been calculated using calendar-day normalization."
+        return _insight("Weekend versus weekday", "Weekend and weekday performance is normalized by calendar day for a fair comparison.", ["Daily revenue prevents a five-day weekday period from dominating the comparison."], ["Use the higher daily-revenue segment to guide staffing and campaign timing."])
     if route.intent == "FESTIVE_VS_NORMAL":
-        return "Festive and normal-period performance has been calculated using calendar labels."
+        return _insight("Festive-period performance", "Festive and normal periods are compared using the dataset’s calendar labels and daily revenue normalization.", ["Daily revenue gives a comparable view across periods of different lengths."], ["Use the strongest festive response to plan inventory and channel capacity."])
     if route.intent == "STORE_DECLINE_DIAGNOSIS":
-        return (
-            f"{evidence['declining_store_count']} stores show a strict three-month revenue decline. "
-            "Each store’s order, AOV, channel, SKU, and promotion evidence is included in the analysis."
-        )
-    return "Analysis completed from verified dataset evidence."
+        return _insight("Consistently declining stores", f"{evidence['declining_store_count']} stores show a strict three-month revenue decline. Order, AOV, channel, SKU, and promotion evidence is available for every affected store.", ["The evidence identifies observed contributors, not proven causes."], ["Prioritize the steepest-declining stores for a focused recovery review."], "Driver evidence is correlational and should be validated with store operations.")
+    return _insight("Analysis complete", "Analysis completed from verified dataset evidence.")
+
+
+def _insight(headline: str, summary: str, findings: list[str] | None = None, actions: list[str] | None = None, caveat: str = "All metrics are calculated from the supplied workbook.") -> dict[str, Any]:
+    return {"headline": headline, "summary": summary, "key_findings": findings or [], "recommended_actions": actions or [], "caveat": caveat}
+
+
+def _validated_insight(candidate: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    headline = candidate.get("headline")
+    summary = candidate.get("summary")
+    if not isinstance(headline, str) or not headline.strip() or not isinstance(summary, str) or not summary.strip():
+        return fallback
+    return {
+        "headline": headline.strip(),
+        "summary": summary.strip(),
+        "key_findings": [item.strip() for item in candidate.get("key_findings", []) if isinstance(item, str) and item.strip()][:3],
+        "recommended_actions": [item.strip() for item in candidate.get("recommended_actions", []) if isinstance(item, str) and item.strip()][:2],
+        "caveat": candidate.get("caveat").strip() if isinstance(candidate.get("caveat"), str) and candidate["caveat"].strip() else fallback["caveat"],
+    }
