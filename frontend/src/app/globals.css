@@ -47,6 +47,7 @@ nav { display:grid; gap:3px; }.question-link { position:relative; width:100%; pa
 .insight-grid ul { margin:0; padding-left:18px; color:var(--ink); font-size:13px; line-height:1.55; }
 .caveat { margin:16px 0 0; padding-top:12px; border-top:1px solid #c8d4e9; color:var(--muted); font-size:12px; line-height:1.5; }
 .follow-up-answer { max-width:860px; padding:20px 22px; background:#f4f7ff; }.follow-up-answer h2 { font-size:clamp(18px,1.6vw,22px); }.follow-up-findings { grid-template-columns:1fr; margin-top:15px; }.follow-up-answer .caveat { margin-top:13px; }
+.unsupported-answer { max-width:720px; padding:17px 19px; border:1px solid var(--line); border-radius:14px; background:var(--paper); }.unsupported-answer p { margin:0; color:var(--ink); font-size:15px; line-height:1.6; }.unsupported-answer span { display:block; margin-top:10px; color:var(--muted); font-size:12px; }
 .driver-grid { display:grid; gap:10px; margin-top:16px; }
 .driver-card { border:1px solid var(--line); border-radius:12px; background:var(--paper); overflow:hidden; }
 .driver-card summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; cursor:pointer; list-style:none; }

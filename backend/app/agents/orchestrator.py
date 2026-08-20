@@ -112,6 +112,8 @@ class QueryRouter:
     def route(self, question: str, conversation_history: Sequence[dict[str, str]] = ()) -> Route:
         local_route = self._local_route(question)
         context_route = self._context_route(question, conversation_history)
+        if local_route is None and context_route is None and not self._is_dataset_related(question):
+            return Route("UNSUPPORTED", None)
         if self._model is None:
             return local_route or context_route or Route("UNSUPPORTED", None)
 
@@ -121,7 +123,10 @@ class QueryRouter:
             response = self._model.complete_json(
                 system_prompt=(
                     "You are the routing agent for a QSR analytics application. Return JSON only: "
-                    '{"intent":"one allowed intent"}. Allowed intents: ' + ", ".join(self._routes_by_intent)
+                    '{"intent":"one allowed intent or UNSUPPORTED"}. Only choose an intent when the current '
+                    "question can be fully answered by one of the approved analyses. Never use a previous "
+                    "conversation topic to answer an unrelated question. Return UNSUPPORTED for general knowledge, "
+                    "real-world facts, and unsupported dataset requests. Allowed intents: " + ", ".join(self._routes_by_intent)
                 ),
                 user_prompt=json.dumps({"question": question, "recent_conversation": conversation_history}, default=str),
             )
@@ -143,7 +148,7 @@ class QueryRouter:
     def _context_route(self, question: str, conversation_history: Sequence[dict[str, str]]) -> Route | None:
         """Keep simple referential follow-ups useful even in offline fallback mode."""
         normalized = question.casefold().strip()
-        referential_starts = ("that", "this", "those", "it ", "can you explain", "tell me more", "why did")
+        referential_starts = ("that", "this", "those", "it ", "can you explain", "tell me more", "why did", "show that", "visualize that", "put that")
         if not conversation_history or not normalized.startswith(referential_starts):
             return None
         for turn in reversed(conversation_history):
@@ -153,6 +158,18 @@ class QueryRouter:
             if route:
                 return route
         return None
+
+    @staticmethod
+    def _is_dataset_related(question: str) -> bool:
+        """Reject unrelated general-knowledge prompts before any model call."""
+        dataset_terms = (
+            "quickbite", "qsr", "revenue", "sales", "order", "aov", "average order",
+            "store", "channel", "sku", "product", "city", "weekend", "weekday", "festive",
+            "festival", "promotion", "demand", "burger", "pizza", "customer", "performance",
+            "declin", "month", "may", "june", "july",
+        )
+        normalized = question.casefold()
+        return any(term in normalized for term in dataset_terms)
 
 
 class InsightNarrator:
@@ -220,7 +237,8 @@ class AnalyticsOrchestrator:
         state.route = self._router.route(state.question, state.conversation_history)
         state.trace.append(AgentTraceEvent("router", "route_question", state.route.intent))
         if state.route.intent == "UNSUPPORTED":
-            state.answer = "I can answer QSR questions about revenue, stores, channels, SKUs, calendar performance, and declining stores."
+            state.insight = _unsupported_insight()
+            state.answer = state.insight["summary"]
             return state
 
         if state.route.requires_investigation:
@@ -248,7 +266,8 @@ class AnalyticsOrchestrator:
         state.trace.append(AgentTraceEvent("router", "route_question", state.route.intent))
         yield "progress", {"agent": "router", "status": "complete", "detail": f"Selected {state.route.intent}."}
         if state.route.intent == "UNSUPPORTED":
-            state.answer = "I can answer QSR questions about revenue, stores, channels, SKUs, calendar performance, and declining stores."
+            state.insight = _unsupported_insight()
+            state.answer = state.insight["summary"]
             yield "final", _state_payload(state)
             return
 
@@ -315,6 +334,14 @@ def _response_mode(question: str, history: Sequence[dict[str, str]]) -> str:
         return "dashboard"
     visual_terms = ("chart", "graph", "table", "dashboard", "visual", "breakdown", "plot")
     return "dashboard" if any(term in question.casefold() for term in visual_terms) else "follow_up"
+
+
+def _unsupported_insight() -> dict[str, Any]:
+    return _insight(
+        "I can help with the QuickBite dataset",
+        "I don’t have information about that outside the QuickBite dataset. Ask me about revenue, stores, channels, SKU demand, calendar performance, or declining stores and I’ll look into it.",
+        caveat="This assistant answers only from the supplied QuickBite workbook.",
+    )
 
 
 def _deterministic_insight(route: Route | None, evidence: dict[str, Any]) -> dict[str, Any]:

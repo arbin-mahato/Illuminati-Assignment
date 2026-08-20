@@ -131,7 +131,12 @@ function Landing({ onChoose }: { onChoose: (index: number) => void }) {
 }
 
 function Conversation({ messages }: { messages: ConversationItem[] }) {
-  return <section className="conversation" aria-live="polite">{messages.map((message) => message.role === 'user' ? <article className="message user-message" key={message.id}><div><span className="message-label">Your question</span><p>{message.content}</p></div><span className="message-avatar"><UserRound size={17} /></span></article> : <article className="message agent-message" key={message.id}><span className="message-avatar agent-avatar"><Bot size={18} /></span><div className="agent-response"><div className="message-label">QSR Insight Agent</div>{message.response ? <><InsightNarrative insight={message.response.insight} fallback={message.response.answer} intent={message.response.intent} compact={message.response.response_mode === 'follow_up'} />{message.response.response_mode === 'dashboard' && <InsightPanels response={message.response} />}<Trace progress={message.progress ?? []} /></> : <Progress progress={message.progress ?? []} />}</div></article>)}</section>;
+  return <section className="conversation" aria-live="polite">{messages.map((message) => message.role === 'user' ? <article className="message user-message" key={message.id}><div><span className="message-label">Your question</span><p>{message.content}</p></div><span className="message-avatar"><UserRound size={17} /></span></article> : <article className="message agent-message" key={message.id}><span className="message-avatar agent-avatar"><Bot size={18} /></span><div className="agent-response"><div className="message-label">QSR Insight Agent</div>{message.response ? <>{message.response.intent === 'UNSUPPORTED' ? <UnsupportedAnswer response={message.response} /> : <><InsightNarrative insight={message.response.insight} fallback={message.response.answer} intent={message.response.intent} compact={message.response.response_mode === 'follow_up'} />{message.response.response_mode === 'dashboard' && <InsightPanels response={message.response} />}</>}<Trace progress={message.progress ?? []} /></> : <Progress progress={message.progress ?? []} />}</div></article>)}</section>;
+}
+
+function UnsupportedAnswer({ response }: { response: AnalysisResponse }) {
+  const message = response.insight?.summary ?? response.answer;
+  return <section className="unsupported-answer"><p>{message}</p><span>Try: “Which channel has the highest average order value?”</span></section>;
 }
 
 function InsightNarrative({ insight, fallback, intent, compact }: { insight: InsightContent | null; fallback: string; intent: string; compact: boolean }) {

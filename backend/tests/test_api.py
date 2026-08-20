@@ -82,6 +82,21 @@ def test_contextual_question_uses_compact_response_mode_unless_visuals_are_reque
     assert visual.json()["response_mode"] == "dashboard"
 
 
+def test_unrelated_question_is_declined_even_when_the_session_has_analytics_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "question": "Who is the PM of India?",
+            "history": [{"role": "assistant", "content": "Revenue was stable.", "intent": "OVERALL_METRICS"}],
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["intent"] == "UNSUPPORTED"
+    assert body["tool_result"] is None
+    assert "QuickBite dataset" in body["answer"]
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [
