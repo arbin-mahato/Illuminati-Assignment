@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1_000, description="Natural-language QSR analytics question.")
     session_id: Optional[str] = Field(default=None, max_length=64, description="Browser-generated identifier for one local conversation.")
     history: List[ConversationTurn] = Field(default_factory=list, description="Recent client-held conversation context for follow-up questions.")
+    initial_analysis: Optional[Dict[str, Any]] = Field(default=None, description="Bounded evidence retained from the first browser-session analysis.")
 
 
 class TraceEventResponse(BaseModel):

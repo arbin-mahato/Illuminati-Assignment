@@ -59,7 +59,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
     @app.post("/api/chat", response_model=ChatResponse, tags=["Analytics"])
     def chat(payload: ChatRequest, request: Request) -> ChatResponse:
         try:
-            state = request.app.state.orchestrator.run(payload.question, _history_payload(payload))
+            state = request.app.state.orchestrator.run(payload.question, _history_payload(payload), payload.initial_analysis)
         except (ValueError, WorkbookValidationError) as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
         assert state.route is not None
@@ -80,7 +80,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
         """Stream bounded agent progress and one final structured response over SSE."""
         def event_stream() -> Iterator[str]:
             try:
-                for event_name, event_payload in request.app.state.orchestrator.run_events(payload.question, _history_payload(payload)):
+                for event_name, event_payload in request.app.state.orchestrator.run_events(payload.question, _history_payload(payload), payload.initial_analysis):
                     yield _sse(event_name, event_payload)
             except (ValueError, WorkbookValidationError) as error:
                 yield _sse("error", {"detail": str(error)})

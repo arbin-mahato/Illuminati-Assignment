@@ -111,6 +111,19 @@ def test_dataset_entity_follow_up_is_not_rejected_as_unrelated(client: TestClien
     assert body["response_mode"] == "follow_up"
 
 
+def test_streaming_chat_accepts_initial_browser_analysis_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat/stream",
+        json={
+            "question": "Why is Zomato greater than Swiggy?",
+            "history": [{"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+            "initial_analysis": {"intent": "CHANNEL_PERFORMANCE", "summary": "Zomato leads.", "tool_result": {"channels": [{"channel": "Zomato"}]}},
+        },
+    )
+    assert response.status_code == 200
+    assert "CHANNEL_PERFORMANCE" in response.text
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [

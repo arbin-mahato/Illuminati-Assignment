@@ -38,6 +38,15 @@ export interface ConversationContextTurn {
 export interface AnalysisRequestContext {
   sessionId: string;
   history: ConversationContextTurn[];
+  initialAnalysis?: InitialAnalysisContext;
+}
+
+export interface InitialAnalysisContext {
+  question: string;
+  intent: string;
+  summary: string;
+  tool_result: Record<string, unknown> | null;
+  investigation_result: Record<string, unknown> | null;
 }
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
@@ -46,7 +55,7 @@ export async function runAnalysis(question: string, context?: AnalysisRequestCon
   const response = await fetch(`${apiBaseUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [] }),
+    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [], initial_analysis: context?.initialAnalysis }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -63,7 +72,7 @@ export async function streamAnalysis(
   const response = await fetch(`${apiBaseUrl}/api/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [] }),
+    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [], initial_analysis: context?.initialAnalysis }),
   });
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => ({}));

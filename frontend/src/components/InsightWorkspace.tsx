@@ -2,16 +2,16 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Trash2, UserRound } from 'lucide-react';
-import { AnalysisResponse, ConversationContextTurn, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
+import { AnalysisResponse, ConversationContextTurn, InitialAnalysisContext, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
 import { InsightPanels } from '@/components/InsightPanels';
 import { evaluationQuestions } from '@/lib/questions';
 
 const capabilities = ['Revenue & orders', 'Store performance', 'Channel mix', 'SKU demand', 'City decline', 'Weekend comparison', 'Festive impact', 'Root-cause analysis'];
 
 type ConversationItem = { id: string; role: 'user' | 'assistant'; content?: string; progress?: ProgressEvent[]; response?: AnalysisResponse; };
-type StoredSession = { version: 1; sessionId: string; messages: ConversationItem[] };
+type StoredSession = { version: 2; sessionId: string; messages: ConversationItem[] };
 
-const sessionStorageKey = 'qsr-insight-studio.active-session.v1';
+const sessionStorageKey = 'qsr-insight-studio.active-session.v2';
 
 function createSessionId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -29,6 +29,18 @@ function recentConversation(messages: ConversationItem[]): ConversationContextTu
     }
     return turns;
   }, []).slice(-8);
+}
+
+function initialAnalysisContext(messages: ConversationItem[]): InitialAnalysisContext | undefined {
+  const firstDashboardResponse = messages.find((message) => message.role === 'assistant' && message.response?.response_mode === 'dashboard' && (message.response.tool_result || message.response.investigation_result))?.response;
+  if (!firstDashboardResponse) return undefined;
+  return {
+    question: firstDashboardResponse.question,
+    intent: firstDashboardResponse.intent,
+    summary: firstDashboardResponse.insight?.summary ?? firstDashboardResponse.answer,
+    tool_result: firstDashboardResponse.tool_result,
+    investigation_result: firstDashboardResponse.investigation_result,
+  };
 }
 
 export function InsightWorkspace() {
@@ -50,7 +62,7 @@ export function InsightWorkspace() {
       const stored = window.localStorage.getItem(sessionStorageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as StoredSession;
-        if (parsed.version === 1 && parsed.sessionId && Array.isArray(parsed.messages)) {
+        if (parsed.version === 2 && parsed.sessionId && Array.isArray(parsed.messages)) {
           setSessionId(parsed.sessionId);
           setMessages(parsed.messages.filter((message) => message.role === 'user' || message.response));
         }
@@ -67,7 +79,7 @@ export function InsightWorkspace() {
     if (!hasRestoredSession || !sessionId) return;
     const completedMessages = messages.filter((message) => message.role === 'user' || message.response);
     try {
-      window.localStorage.setItem(sessionStorageKey, JSON.stringify({ version: 1, sessionId, messages: completedMessages } satisfies StoredSession));
+      window.localStorage.setItem(sessionStorageKey, JSON.stringify({ version: 2, sessionId, messages: completedMessages } satisfies StoredSession));
     } catch {
       // The current chat still works if browser storage is disabled or full.
     }
@@ -93,7 +105,7 @@ export function InsightWorkspace() {
     try {
       const response = await streamAnalysis(submittedQuestion, (progress) => {
         setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, progress: [...(message.progress ?? []), progress] } : message));
-      }, { sessionId, history: recentConversation(messages) });
+      }, { sessionId, history: recentConversation(messages), initialAnalysis: initialAnalysisContext(messages) });
       setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, response } : message));
     } catch (requestError) {
       setMessages((current) => current.filter((message) => message.id !== assistantId));
