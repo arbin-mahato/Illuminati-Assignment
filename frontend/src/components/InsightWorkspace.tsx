@@ -40,6 +40,7 @@ export function InsightWorkspace() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [hasRestoredSession, setHasRestoredSession] = useState(false);
+  const [pendingQuestionIndex, setPendingQuestionIndex] = useState<number | null>(null);
   const contentEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { contentEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isLoading]);
@@ -72,7 +73,15 @@ export function InsightWorkspace() {
     }
   }, [hasRestoredSession, messages, sessionId]);
 
-  function chooseQuestion(index: number) { setSelectedQuestion(index); setQuestion(evaluationQuestions[index]); }
+  function chooseQuestion(index: number) {
+    if (isLoading) return;
+    if (messages.length > 0) {
+      setPendingQuestionIndex(index);
+      return;
+    }
+    setSelectedQuestion(index);
+    setQuestion(evaluationQuestions[index]);
+  }
 
   async function submitQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,6 +111,18 @@ export function InsightWorkspace() {
     setSessionId(createSessionId());
   }
 
+  function startSelectedQuestionInNewSession() {
+    if (pendingQuestionIndex === null) return;
+    const nextQuestion = evaluationQuestions[pendingQuestionIndex];
+    window.localStorage.removeItem(sessionStorageKey);
+    setMessages([]);
+    setQuestion(nextQuestion);
+    setError(null);
+    setSelectedQuestion(pendingQuestionIndex);
+    setSessionId(createSessionId());
+    setPendingQuestionIndex(null);
+  }
+
   const hasConversation = messages.length > 0;
   return <main className={`app-shell ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
     <aside className="sidebar">
@@ -122,8 +143,13 @@ export function InsightWorkspace() {
         <div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question about stores, revenue, demand, or performance…" disabled={isLoading} /><button type="submit" disabled={!question.trim() || isLoading} aria-label="Run analysis">{isLoading ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>
         <p>Agent progress, verified calculations, and supporting evidence appear in every response.</p>
       </form>
+      {pendingQuestionIndex !== null && <SessionResetDialog question={evaluationQuestions[pendingQuestionIndex]} onCancel={() => setPendingQuestionIndex(null)} onConfirm={startSelectedQuestionInNewSession} />}
     </section>
   </main>;
+}
+
+function SessionResetDialog({ question, onCancel, onConfirm }: { question: string; onCancel: () => void; onConfirm: () => void }) {
+  return <div className="dialog-backdrop" role="presentation"><section className="session-dialog" role="alertdialog" aria-modal="true" aria-labelledby="session-reset-title" aria-describedby="session-reset-description"><span className="eyebrow">New analysis session</span><h2 id="session-reset-title">Start a fresh conversation?</h2><p id="session-reset-description">Your current conversation history will be deleted from this browser. The selected analysis will start as a new session and show its complete dashboard.</p><p className="dialog-question">{question}</p><div className="dialog-actions"><button type="button" className="dialog-cancel" onClick={onCancel}>Keep current session</button><button type="button" className="dialog-confirm" onClick={onConfirm}>Delete and continue</button></div></section></div>;
 }
 
 function Landing({ onChoose }: { onChoose: (index: number) => void }) {
