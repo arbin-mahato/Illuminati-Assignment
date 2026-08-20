@@ -73,6 +73,15 @@ def test_streaming_chat_accepts_recent_session_context(client: TestClient) -> No
     assert "CHANNEL_PERFORMANCE" in response.text
 
 
+def test_contextual_question_uses_compact_response_mode_unless_visuals_are_requested(client: TestClient) -> None:
+    history = [{"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"}]
+    compact = client.post("/api/chat", json={"question": "Can you explain that in simpler terms?", "history": history})
+    visual = client.post("/api/chat", json={"question": "Show that in a chart.", "history": history})
+    assert compact.json()["response_mode"] == "follow_up"
+    assert compact.json()["insight"]["recommended_actions"] == []
+    assert visual.json()["response_mode"] == "dashboard"
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [

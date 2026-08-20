@@ -7,6 +7,7 @@ export interface AgentTraceEvent {
 export interface AnalysisResponse {
   question: string;
   intent: string;
+  response_mode: 'dashboard' | 'follow_up';
   answer: string;
   insight: InsightContent | null;
   tool_result: Record<string, unknown> | null;

@@ -72,6 +72,7 @@ class AgentTraceEvent:
 class AnalysisState:
     question: str
     conversation_history: list[dict[str, str]] = field(default_factory=list)
+    response_mode: str = "dashboard"
     route: Route | None = None
     tool_result: dict[str, Any] | None = None
     investigation_result: dict[str, Any] | None = None
@@ -163,6 +164,8 @@ class InsightNarrator:
     def narrate(self, state: AnalysisState) -> dict[str, Any]:
         evidence = state.investigation_result or state.tool_result or {}
         fallback = _deterministic_insight(state.route, evidence)
+        if state.response_mode == "follow_up":
+            fallback["recommended_actions"] = []
         if self._model is None:
             return fallback
         try:
@@ -172,14 +175,22 @@ class InsightNarrator:
                     '{"headline":"...","summary":"...","key_findings":["..."],"recommended_actions":["..."],"caveat":"..."}. '
                     "Use only the provided verified evidence. Do not calculate new numbers, invent facts, "
                     "or claim causation from correlation. Keep the summary under 55 words, provide 2–3 useful "
-                    "findings and 1–2 practical actions. Detailed rankings and metrics are rendered separately."
+                    "findings and 1–2 practical actions. Detailed rankings and metrics are rendered separately. "
+                    + (
+                        "This is a follow-up: answer directly, keep recommendations empty, and provide at most two concise findings."
+                        if state.response_mode == "follow_up"
+                        else ""
+                    )
                 ),
                 user_prompt=json.dumps(
                     {"question": state.question, "recent_conversation": state.conversation_history, "evidence": evidence},
                     default=str,
                 ),
             )
-            return _validated_insight(response, fallback)
+            insight = _validated_insight(response, fallback)
+            if state.response_mode == "follow_up":
+                insight["recommended_actions"] = []
+            return insight
         except Exception:
             return fallback
 
@@ -201,7 +212,8 @@ class AnalyticsOrchestrator:
         return cls(dataset, model)
 
     def run(self, question: str, conversation_history: Sequence[dict[str, Any]] = ()) -> AnalysisState:
-        state = AnalysisState(question=question.strip(), conversation_history=_bounded_history(conversation_history))
+        context = _bounded_history(conversation_history)
+        state = AnalysisState(question=question.strip(), conversation_history=context, response_mode=_response_mode(question, context))
         if not state.question:
             raise ValueError("Question cannot be blank")
 
@@ -225,7 +237,8 @@ class AnalyticsOrchestrator:
 
     def run_events(self, question: str, conversation_history: Sequence[dict[str, Any]] = ()) -> Iterator[tuple[str, dict[str, Any]]]:
         """Yield a small, bounded SSE-friendly event stream for one analysis request."""
-        state = AnalysisState(question=question.strip(), conversation_history=_bounded_history(conversation_history))
+        context = _bounded_history(conversation_history)
+        state = AnalysisState(question=question.strip(), conversation_history=context, response_mode=_response_mode(question, context))
         if not state.question:
             raise ValueError("Question cannot be blank")
 
@@ -264,6 +277,7 @@ def _state_payload(state: AnalysisState) -> dict[str, Any]:
     return {
         "question": state.question,
         "intent": state.route.intent,
+        "response_mode": state.response_mode,
         "answer": state.answer,
         "insight": state.insight,
         "tool_result": state.tool_result,
@@ -293,6 +307,14 @@ def _bounded_history(history: Sequence[dict[str, Any]]) -> list[dict[str, str]]:
         remaining -= len(trimmed_content)
     compact.reverse()
     return compact
+
+
+def _response_mode(question: str, history: Sequence[dict[str, str]]) -> str:
+    """Use a compact chat answer for contextual turns unless visuals are requested."""
+    if not history:
+        return "dashboard"
+    visual_terms = ("chart", "graph", "table", "dashboard", "visual", "breakdown", "plot")
+    return "dashboard" if any(term in question.casefold() for term in visual_terms) else "follow_up"
 
 
 def _deterministic_insight(route: Route | None, evidence: dict[str, Any]) -> dict[str, Any]:

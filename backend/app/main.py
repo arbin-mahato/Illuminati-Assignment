@@ -67,6 +67,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
         return ChatResponse(
             question=state.question,
             intent=state.route.intent,
+            response_mode=state.response_mode,
             answer=state.answer,
             insight=state.insight,
             tool_result=state.tool_result,
