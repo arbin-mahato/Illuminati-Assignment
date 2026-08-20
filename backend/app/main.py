@@ -59,7 +59,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
     @app.post("/api/chat", response_model=ChatResponse, tags=["Analytics"])
     def chat(payload: ChatRequest, request: Request) -> ChatResponse:
         try:
-            state = request.app.state.orchestrator.run(payload.question)
+            state = request.app.state.orchestrator.run(payload.question, _history_payload(payload))
         except (ValueError, WorkbookValidationError) as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
         assert state.route is not None
@@ -79,7 +79,7 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
         """Stream bounded agent progress and one final structured response over SSE."""
         def event_stream() -> Iterator[str]:
             try:
-                for event_name, event_payload in request.app.state.orchestrator.run_events(payload.question):
+                for event_name, event_payload in request.app.state.orchestrator.run_events(payload.question, _history_payload(payload)):
                     yield _sse(event_name, event_payload)
             except (ValueError, WorkbookValidationError) as error:
                 yield _sse("error", {"detail": str(error)})
@@ -105,6 +105,11 @@ def _dataset_path() -> Path:
 def _allowed_origins() -> list[str]:
     raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
     return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+
+def _history_payload(payload: ChatRequest) -> list[dict[str, Any]]:
+    """Convert Pydantic models without coupling the orchestrator to HTTP schemas."""
+    return [turn.model_dump() for turn in payload.history]
 
 
 def _sse(event_name: str, payload: dict[str, Any]) -> str:

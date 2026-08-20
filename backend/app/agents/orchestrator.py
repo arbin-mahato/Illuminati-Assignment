@@ -11,7 +11,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Protocol
+from typing import Any, Iterator, Protocol, Sequence
 
 from dotenv import load_dotenv
 
@@ -71,6 +71,7 @@ class AgentTraceEvent:
 @dataclass
 class AnalysisState:
     question: str
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
     route: Route | None = None
     tool_result: dict[str, Any] | None = None
     investigation_result: dict[str, Any] | None = None
@@ -107,10 +108,11 @@ class QueryRouter:
     def __init__(self, model: TextModel | None = None) -> None:
         self._model = model
 
-    def route(self, question: str) -> Route:
+    def route(self, question: str, conversation_history: Sequence[dict[str, str]] = ()) -> Route:
         local_route = self._local_route(question)
+        context_route = self._context_route(question, conversation_history)
         if self._model is None:
-            return local_route or Route("UNSUPPORTED", None)
+            return local_route or context_route or Route("UNSUPPORTED", None)
 
         # A configured model plans every request. Local matching is only a validated
         # contingency path when the model is unavailable or returns an unsupported plan.
@@ -120,7 +122,7 @@ class QueryRouter:
                     "You are the routing agent for a QSR analytics application. Return JSON only: "
                     '{"intent":"one allowed intent"}. Allowed intents: ' + ", ".join(self._routes_by_intent)
                 ),
-                user_prompt=question,
+                user_prompt=json.dumps({"question": question, "recent_conversation": conversation_history}, default=str),
             )
             intent = response.get("intent")
             model_route = self._routes_by_intent.get(intent)
@@ -128,12 +130,26 @@ class QueryRouter:
                 return model_route
         except Exception:
             pass
-        return local_route or Route("UNSUPPORTED", None)
+        return local_route or context_route or Route("UNSUPPORTED", None)
 
     def _local_route(self, question: str) -> Route | None:
         normalized = question.casefold()
         for phrase, route in self._local_routes:
             if phrase in normalized:
+                return route
+        return None
+
+    def _context_route(self, question: str, conversation_history: Sequence[dict[str, str]]) -> Route | None:
+        """Keep simple referential follow-ups useful even in offline fallback mode."""
+        normalized = question.casefold().strip()
+        referential_starts = ("that", "this", "those", "it ", "can you explain", "tell me more", "why did")
+        if not conversation_history or not normalized.startswith(referential_starts):
+            return None
+        for turn in reversed(conversation_history):
+            if turn.get("role") != "assistant":
+                continue
+            route = self._routes_by_intent.get(turn.get("intent"))
+            if route:
                 return route
         return None
 
@@ -158,7 +174,10 @@ class InsightNarrator:
                     "or claim causation from correlation. Keep the summary under 55 words, provide 2–3 useful "
                     "findings and 1–2 practical actions. Detailed rankings and metrics are rendered separately."
                 ),
-                user_prompt=json.dumps({"question": state.question, "evidence": evidence}, default=str),
+                user_prompt=json.dumps(
+                    {"question": state.question, "recent_conversation": state.conversation_history, "evidence": evidence},
+                    default=str,
+                ),
             )
             return _validated_insight(response, fallback)
         except Exception:
@@ -181,12 +200,12 @@ class AnalyticsOrchestrator:
         model = GroqTextModel(api_key, model_name) if api_key else None
         return cls(dataset, model)
 
-    def run(self, question: str) -> AnalysisState:
-        state = AnalysisState(question=question.strip())
+    def run(self, question: str, conversation_history: Sequence[dict[str, Any]] = ()) -> AnalysisState:
+        state = AnalysisState(question=question.strip(), conversation_history=_bounded_history(conversation_history))
         if not state.question:
             raise ValueError("Question cannot be blank")
 
-        state.route = self._router.route(state.question)
+        state.route = self._router.route(state.question, state.conversation_history)
         state.trace.append(AgentTraceEvent("router", "route_question", state.route.intent))
         if state.route.intent == "UNSUPPORTED":
             state.answer = "I can answer QSR questions about revenue, stores, channels, SKUs, calendar performance, and declining stores."
@@ -204,14 +223,15 @@ class AnalyticsOrchestrator:
         state.trace.append(AgentTraceEvent("narrator", "compose_insight", "Generated an evidence-grounded answer."))
         return state
 
-    def run_events(self, question: str) -> Iterator[tuple[str, dict[str, Any]]]:
+    def run_events(self, question: str, conversation_history: Sequence[dict[str, Any]] = ()) -> Iterator[tuple[str, dict[str, Any]]]:
         """Yield a small, bounded SSE-friendly event stream for one analysis request."""
-        state = AnalysisState(question=question.strip())
+        state = AnalysisState(question=question.strip(), conversation_history=_bounded_history(conversation_history))
         if not state.question:
             raise ValueError("Question cannot be blank")
 
-        yield "progress", {"agent": "router", "status": "working", "detail": "Interpreting the business question."}
-        state.route = self._router.route(state.question)
+        router_detail = "Reviewing the question and recent session context." if state.conversation_history else "Interpreting the business question."
+        yield "progress", {"agent": "router", "status": "working", "detail": router_detail}
+        state.route = self._router.route(state.question, state.conversation_history)
         state.trace.append(AgentTraceEvent("router", "route_question", state.route.intent))
         yield "progress", {"agent": "router", "status": "complete", "detail": f"Selected {state.route.intent}."}
         if state.route.intent == "UNSUPPORTED":
@@ -250,6 +270,29 @@ def _state_payload(state: AnalysisState) -> dict[str, Any]:
         "investigation_result": state.investigation_result,
         "trace": [event.__dict__ for event in state.trace],
     }
+
+
+def _bounded_history(history: Sequence[dict[str, Any]]) -> list[dict[str, str]]:
+    """Limit client-provided context to eight compact turns and six thousand characters.
+
+    Browsers keep the full transcript locally. The model only receives enough recent
+    context to resolve follow-ups, keeping requests private and predictable in size.
+    """
+    compact: list[dict[str, str]] = []
+    remaining = 6_000
+    for turn in reversed(history[-8:]):
+        role = str(turn.get("role", ""))
+        content = str(turn.get("content", "")).strip()
+        intent = str(turn.get("intent", "")).strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        if remaining <= 0:
+            break
+        trimmed_content = content[:remaining]
+        compact.append({"role": role, "content": trimmed_content, "intent": intent})
+        remaining -= len(trimmed_content)
+    compact.reverse()
+    return compact
 
 
 def _deterministic_insight(route: Route | None, evidence: dict[str, Any]) -> dict[str, Any]:

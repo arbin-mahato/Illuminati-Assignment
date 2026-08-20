@@ -48,6 +48,19 @@ def test_unsupported_question_returns_a_safe_boundary(dataset: QSRDataset) -> No
     assert state.tool_result is None
 
 
+def test_referential_follow_up_reuses_the_previous_approved_intent(dataset: QSRDataset) -> None:
+    state = AnalyticsOrchestrator(dataset).run(
+        "Can you explain that in simpler terms?",
+        conversation_history=[
+            {"role": "user", "content": "How do channels compare?"},
+            {"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"},
+        ],
+    )
+    assert state.route is not None
+    assert state.route.intent == "CHANNEL_PERFORMANCE"
+    assert state.conversation_history[-1]["intent"] == "CHANNEL_PERFORMANCE"
+
+
 def test_blank_question_is_rejected(dataset: QSRDataset) -> None:
     with pytest.raises(ValueError, match="blank"):
         AnalyticsOrchestrator(dataset).run("   ")

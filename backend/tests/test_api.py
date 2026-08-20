@@ -57,6 +57,22 @@ def test_streaming_chat_emits_progress_and_a_final_payload(client: TestClient) -
     assert "CHANNEL_PERFORMANCE" in response.text
 
 
+def test_streaming_chat_accepts_recent_session_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat/stream",
+        json={
+            "question": "Can you explain that in simpler terms?",
+            "session_id": "demo-session-123",
+            "history": [
+                {"role": "user", "content": "How does revenue and average order value vary across different channels?"},
+                {"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert "CHANNEL_PERFORMANCE" in response.text
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [

@@ -1,14 +1,35 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, UserRound } from 'lucide-react';
-import { AnalysisResponse, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
+import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Trash2, UserRound } from 'lucide-react';
+import { AnalysisResponse, ConversationContextTurn, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
 import { InsightPanels } from '@/components/InsightPanels';
 import { evaluationQuestions } from '@/lib/questions';
 
 const capabilities = ['Revenue & orders', 'Store performance', 'Channel mix', 'SKU demand', 'City decline', 'Weekend comparison', 'Festive impact', 'Root-cause analysis'];
 
 type ConversationItem = { id: string; role: 'user' | 'assistant'; content?: string; progress?: ProgressEvent[]; response?: AnalysisResponse; };
+type StoredSession = { version: 1; sessionId: string; messages: ConversationItem[] };
+
+const sessionStorageKey = 'qsr-insight-studio.active-session.v1';
+
+function createSessionId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function recentConversation(messages: ConversationItem[]): ConversationContextTurn[] {
+  return messages.reduce<ConversationContextTurn[]>((turns, message) => {
+    if (message.role === 'user' && message.content) turns.push({ role: 'user', content: message.content });
+    if (message.role === 'assistant' && message.response) {
+      turns.push({
+        role: 'assistant',
+        content: message.response.insight?.summary ?? message.response.answer,
+        intent: message.response.intent,
+      });
+    }
+    return turns;
+  }, []).slice(-8);
+}
 
 export function InsightWorkspace() {
   const [question, setQuestion] = useState('');
@@ -17,9 +38,39 @@ export function InsightWorkspace() {
   const [messages, setMessages] = useState<ConversationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState('');
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
   const contentEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { contentEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isLoading]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(sessionStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as StoredSession;
+        if (parsed.version === 1 && parsed.sessionId && Array.isArray(parsed.messages)) {
+          setSessionId(parsed.sessionId);
+          setMessages(parsed.messages.filter((message) => message.role === 'user' || message.response));
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(sessionStorageKey);
+    } finally {
+      setSessionId((current) => current || createSessionId());
+      setHasRestoredSession(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasRestoredSession || !sessionId) return;
+    const completedMessages = messages.filter((message) => message.role === 'user' || message.response);
+    try {
+      window.localStorage.setItem(sessionStorageKey, JSON.stringify({ version: 1, sessionId, messages: completedMessages } satisfies StoredSession));
+    } catch {
+      // The current chat still works if browser storage is disabled or full.
+    }
+  }, [hasRestoredSession, messages, sessionId]);
 
   function chooseQuestion(index: number) { setSelectedQuestion(index); setQuestion(evaluationQuestions[index]); }
 
@@ -33,12 +84,22 @@ export function InsightWorkspace() {
     try {
       const response = await streamAnalysis(submittedQuestion, (progress) => {
         setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, progress: [...(message.progress ?? []), progress] } : message));
-      });
+      }, { sessionId, history: recentConversation(messages) });
       setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, response } : message));
     } catch (requestError) {
       setMessages((current) => current.filter((message) => message.id !== assistantId));
       setError(requestError instanceof Error ? requestError.message : 'Unable to complete analysis.');
     } finally { setIsLoading(false); }
+  }
+
+  function clearSession() {
+    if (isLoading) return;
+    window.localStorage.removeItem(sessionStorageKey);
+    setMessages([]);
+    setQuestion('');
+    setError(null);
+    setSelectedQuestion(null);
+    setSessionId(createSessionId());
   }
 
   const hasConversation = messages.length > 0;
@@ -51,7 +112,7 @@ export function InsightWorkspace() {
       <div className="data-note"><Database size={17} /><span><strong>Verified dataset</strong><br />20,000 orders · 50 stores</span></div>
     </aside>
     <section className="workspace" id="top">
-      <header className="topbar"><div><span className="eyebrow">Operations intelligence</span><h1>{hasConversation ? 'Intelligence session' : 'Ask the business data.'}</h1></div><button className="help-button"><CircleHelp size={17} /> How it works</button></header>
+      <header className="topbar"><div><span className="eyebrow">Operations intelligence</span><h1>{hasConversation ? 'Intelligence session' : 'Ask the business data.'}</h1></div>{hasConversation ? <button className="help-button" type="button" onClick={clearSession} disabled={isLoading}><Trash2 size={16} /> Clear session</button> : <button className="help-button" type="button"><CircleHelp size={17} /> How it works</button>}</header>
       <div className={`content ${hasConversation ? 'conversation-content' : ''}`}>
         {!hasConversation ? <Landing onChoose={chooseQuestion} /> : <Conversation messages={messages} />}
         {error && <p className="error-message" role="alert">{error}</p>}<div ref={contentEndRef} />
