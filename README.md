@@ -50,15 +50,15 @@ The app resolves “last three months” from the workbook’s latest date, rath
 
 ## Technology
 
-| Area | Choice |
-| --- | --- |
-| Web application | Next.js 14, React 18, TypeScript |
-| Data visualisation | Recharts |
-| API | FastAPI and Server-Sent Events |
-| Analytics engine | DuckDB, Pandas, OpenPyXL |
-| AI | Groq structured-output calls |
-| Local containers | Docker Compose |
-| Automated checks | Pytest, Next.js production build, GitHub Actions |
+| Area               | Choice                                           |
+| ------------------ | ------------------------------------------------ |
+| Web application    | Next.js 14, React 18, TypeScript                 |
+| Data visualisation | Recharts                                         |
+| API                | FastAPI and Server-Sent Events                   |
+| Analytics engine   | DuckDB, Pandas, OpenPyXL                         |
+| AI                 | Groq structured-output calls                     |
+| Local containers   | Docker Compose                                   |
+| Automated checks   | Pytest, Next.js production build, GitHub Actions |
 
 ## Project layout
 
@@ -83,13 +83,13 @@ qsr-insight-studio/
 
 ## Metric definitions
 
-| Metric | Definition |
-| --- | --- |
-| Revenue | `SUM(NET_REVENUE)` from billed orders |
-| Orders | `COUNT(DISTINCT ORDER_ID)` |
-| Average order value | Revenue divided by distinct orders |
-| SKU quantity | `SUM(QUANTITY)` from order details |
-| SKU revenue | `SUM(LINE_NET_VALUE)` from order details |
+| Metric              | Definition                               |
+| ------------------- | ---------------------------------------- |
+| Revenue             | `SUM(NET_REVENUE)` from billed orders    |
+| Orders              | `COUNT(DISTINCT ORDER_ID)`               |
+| Average order value | Revenue divided by distinct orders       |
+| SKU quantity        | `SUM(QUANTITY)` from order details       |
+| SKU revenue         | `SUM(LINE_NET_VALUE)` from order details |
 
 On startup, the API verifies the workbook’s required sheets, non-empty data, unique order IDs, non-negative revenue, and order-detail references before serving analysis.
 
@@ -161,11 +161,11 @@ make build
 
 ## API
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/health` | Service and dataset health |
-| `GET` | `/api/metadata` | Dataset metadata |
-| `POST` | `/api/chat` | Complete structured answer as JSON |
+| Method | Endpoint           | Purpose                                                           |
+| ------ | ------------------ | ----------------------------------------------------------------- |
+| `GET`  | `/api/health`      | Service and dataset health                                        |
+| `GET`  | `/api/metadata`    | Dataset metadata                                                  |
+| `POST` | `/api/chat`        | Complete structured answer as JSON                                |
 | `POST` | `/api/chat/stream` | Progress events followed by the complete structured answer as SSE |
 
 Example request body:
@@ -186,21 +186,6 @@ Set `GROQ_API_KEY` only in Render. Set `NEXT_PUBLIC_API_BASE_URL` in Vercel to t
 - Store `GROQ_API_KEY` only in your local `.env` and Render’s encrypted environment-variable settings.
 - Restrict `CORS_ALLOWED_ORIGINS` to your exact Vercel domain in production.
 - The analytics layer only exposes tested query functions; user input cannot become executable SQL.
-
-## Release the first version
-
-After this README branch is reviewed and merged into `main`, create an annotated release tag from the verified `main` commit:
-
-```bash
-git switch main
-git pull origin main
-make test
-make build
-git tag -a v1.0.0 -m "QSR Insight Studio v1.0.0"
-git push origin v1.0.0
-```
-
-Then open GitHub → **Releases** → **Draft a new release**, select `v1.0.0`, add short release notes, and publish it. An annotated tag ensures the deployed first version can always be traced back to the exact source commit.
 
 ## License
 
