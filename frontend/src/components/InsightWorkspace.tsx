@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, ChevronRight, CircleHelp, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Trash2, UserRound } from 'lucide-react';
+import { ArrowUpRight, Bot, ChevronRight, Database, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Trash2, UserRound } from 'lucide-react';
 import { AnalysisResponse, ConversationContextTurn, InitialAnalysisContext, InsightContent, ProgressEvent, streamAnalysis } from '@/lib/api';
 import { InsightPanels } from '@/components/InsightPanels';
 import { evaluationQuestions } from '@/lib/questions';
@@ -145,14 +145,13 @@ export function InsightWorkspace() {
       <div className="data-note"><Database size={17} /><span><strong>Verified dataset</strong><br />20,000 orders · 50 stores</span></div>
     </aside>
     <section className="workspace" id="top">
-      <header className="topbar"><div><span className="eyebrow">QuickBite analytics</span><h1>QuickBite Insight Studio</h1></div>{hasConversation ? <button className="help-button" type="button" onClick={clearSession} disabled={isLoading}><Trash2 size={16} /> Clear session</button> : <button className="help-button" type="button"><CircleHelp size={17} /> How it works</button>}</header>
       <div className={`content ${hasConversation ? 'conversation-content' : ''}`}>
         {!hasConversation ? <Landing onChoose={chooseQuestion} /> : <Conversation messages={messages} />}
         {error && <p className="error-message" role="alert">{error}</p>}<div ref={contentEndRef} />
       </div>
       <form className="composer" onSubmit={submitQuestion}>
         <label htmlFor="question">What would you like to understand?</label>
-        <div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question about stores, revenue, demand, or performance…" disabled={isLoading} /><button type="submit" disabled={!question.trim() || isLoading} aria-label="Run analysis">{isLoading ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>
+        <div className="composer-controls"><div className="input-row"><input id="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question about stores, revenue, demand, or performance…" disabled={isLoading} /><button type="submit" disabled={!question.trim() || isLoading} aria-label="Run analysis">{isLoading ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}</button></div>{hasConversation && <button className="clear-session-button" type="button" onClick={clearSession} disabled={isLoading}><Trash2 size={17} /> Clear session</button>}</div>
         <p>Agent progress, verified calculations, and supporting evidence appear in every response.</p>
       </form>
       {pendingQuestionIndex !== null && <SessionResetDialog question={evaluationQuestions[pendingQuestionIndex]} onCancel={() => setPendingQuestionIndex(null)} onConfirm={startSelectedQuestionInNewSession} />}
