@@ -57,6 +57,73 @@ def test_streaming_chat_emits_progress_and_a_final_payload(client: TestClient) -
     assert "CHANNEL_PERFORMANCE" in response.text
 
 
+def test_streaming_chat_accepts_recent_session_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat/stream",
+        json={
+            "question": "Can you explain that in simpler terms?",
+            "session_id": "demo-session-123",
+            "history": [
+                {"role": "user", "content": "How does revenue and average order value vary across different channels?"},
+                {"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert "CHANNEL_PERFORMANCE" in response.text
+
+
+def test_contextual_question_uses_compact_response_mode_unless_visuals_are_requested(client: TestClient) -> None:
+    history = [{"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"}]
+    compact = client.post("/api/chat", json={"question": "Can you explain that in simpler terms?", "history": history})
+    visual = client.post("/api/chat", json={"question": "Show that in a chart.", "history": history})
+    assert compact.json()["response_mode"] == "follow_up"
+    assert compact.json()["insight"]["recommended_actions"] == []
+    assert visual.json()["response_mode"] == "dashboard"
+
+
+def test_unrelated_question_is_declined_even_when_the_session_has_analytics_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "question": "Who is the PM of India?",
+            "history": [{"role": "assistant", "content": "Revenue was stable.", "intent": "OVERALL_METRICS"}],
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["intent"] == "UNSUPPORTED"
+    assert body["tool_result"] is None
+    assert "QuickBite dataset" in body["answer"]
+
+
+def test_dataset_entity_follow_up_is_not_rejected_as_unrelated(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "question": "Why is Zomato greater than Swiggy?",
+            "history": [{"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["intent"] == "CHANNEL_PERFORMANCE"
+    assert body["response_mode"] == "follow_up"
+
+
+def test_streaming_chat_accepts_initial_browser_analysis_context(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat/stream",
+        json={
+            "question": "Why is Zomato greater than Swiggy?",
+            "history": [{"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+            "initial_analysis": {"intent": "CHANNEL_PERFORMANCE", "summary": "Zomato leads.", "tool_result": {"channels": [{"channel": "Zomato"}]}},
+        },
+    )
+    assert response.status_code == 200
+    assert "CHANNEL_PERFORMANCE" in response.text
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [

@@ -7,6 +7,7 @@ export interface AgentTraceEvent {
 export interface AnalysisResponse {
   question: string;
   intent: string;
+  response_mode: 'dashboard' | 'follow_up';
   answer: string;
   insight: InsightContent | null;
   tool_result: Record<string, unknown> | null;
@@ -28,13 +29,33 @@ export interface ProgressEvent {
   detail: string;
 }
 
+export interface ConversationContextTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  intent?: string;
+}
+
+export interface AnalysisRequestContext {
+  sessionId: string;
+  history: ConversationContextTurn[];
+  initialAnalysis?: InitialAnalysisContext;
+}
+
+export interface InitialAnalysisContext {
+  question: string;
+  intent: string;
+  summary: string;
+  tool_result: Record<string, unknown> | null;
+  investigation_result: Record<string, unknown> | null;
+}
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
-export async function runAnalysis(question: string): Promise<AnalysisResponse> {
+export async function runAnalysis(question: string, context?: AnalysisRequestContext): Promise<AnalysisResponse> {
   const response = await fetch(`${apiBaseUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [], initial_analysis: context?.initialAnalysis }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -46,11 +67,12 @@ export async function runAnalysis(question: string): Promise<AnalysisResponse> {
 export async function streamAnalysis(
   question: string,
   onProgress: (event: ProgressEvent) => void,
+  context?: AnalysisRequestContext,
 ): Promise<AnalysisResponse> {
   const response = await fetch(`${apiBaseUrl}/api/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, session_id: context?.sessionId, history: context?.history ?? [], initial_analysis: context?.initialAnalysis }),
   });
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => ({}));
