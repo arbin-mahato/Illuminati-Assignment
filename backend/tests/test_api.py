@@ -97,6 +97,20 @@ def test_unrelated_question_is_declined_even_when_the_session_has_analytics_cont
     assert "QuickBite dataset" in body["answer"]
 
 
+def test_dataset_entity_follow_up_is_not_rejected_as_unrelated(client: TestClient) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "question": "Why is Zomato greater than Swiggy?",
+            "history": [{"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["intent"] == "CHANNEL_PERFORMANCE"
+    assert body["response_mode"] == "follow_up"
+
+
 @pytest.mark.parametrize(
     ("question", "intent"),
     [

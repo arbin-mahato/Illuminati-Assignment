@@ -61,6 +61,17 @@ def test_referential_follow_up_reuses_the_previous_approved_intent(dataset: QSRD
     assert state.conversation_history[-1]["intent"] == "CHANNEL_PERFORMANCE"
 
 
+def test_entity_based_follow_up_reuses_the_previous_approved_intent(dataset: QSRDataset) -> None:
+    state = AnalyticsOrchestrator(dataset).run(
+        "Why is Zomato greater than Swiggy?",
+        conversation_history=[
+            {"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"},
+        ],
+    )
+    assert state.route is not None
+    assert state.route.intent == "CHANNEL_PERFORMANCE"
+
+
 def test_blank_question_is_rejected(dataset: QSRDataset) -> None:
     with pytest.raises(ValueError, match="blank"):
         AnalyticsOrchestrator(dataset).run("   ")

@@ -149,15 +149,28 @@ class QueryRouter:
         """Keep simple referential follow-ups useful even in offline fallback mode."""
         normalized = question.casefold().strip()
         referential_starts = ("that", "this", "those", "it ", "can you explain", "tell me more", "why did", "show that", "visualize that", "put that")
-        if not conversation_history or not normalized.startswith(referential_starts):
+        if not conversation_history:
             return None
         for turn in reversed(conversation_history):
             if turn.get("role") != "assistant":
                 continue
             route = self._routes_by_intent.get(turn.get("intent"))
-            if route:
+            if route and (normalized.startswith(referential_starts) or self._references_prior_evidence(normalized, turn.get("content", ""))):
                 return route
         return None
+
+    @staticmethod
+    def _references_prior_evidence(question: str, prior_answer: str) -> bool:
+        """Recognise named entities from the preceding verified response.
+
+        This permits natural follow-ups such as “why is Zomato greater than
+        Swiggy?” but not unrelated questions after a prior analytics turn.
+        """
+        ignored_words = {"about", "across", "after", "before", "could", "does", "from", "have", "into", "more", "than", "that", "their", "there", "these", "this", "through", "which", "while", "with", "would"}
+        question_words = {word.strip(".,?!:;()[]{}'\"") for word in question.split()}
+        prior_words = {word.strip(".,?!:;()[]{}'\"") for word in prior_answer.casefold().split()}
+        comparable_words = {word for word in question_words & prior_words if len(word) >= 4 and word not in ignored_words}
+        return bool(comparable_words)
 
     @staticmethod
     def _is_dataset_related(question: str) -> bool:
@@ -166,7 +179,7 @@ class QueryRouter:
             "quickbite", "qsr", "revenue", "sales", "order", "aov", "average order",
             "store", "channel", "sku", "product", "city", "weekend", "weekday", "festive",
             "festival", "promotion", "demand", "burger", "pizza", "customer", "performance",
-            "declin", "month", "may", "june", "july",
+            "declin", "month", "may", "june", "july", "zomato", "swiggy", "dine-in", "takeaway",
         )
         normalized = question.casefold()
         return any(term in normalized for term in dataset_terms)
