@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agents.orchestrator import AnalyticsOrchestrator, TextModel
+from app.agents.orchestrator import AnalyticsOrchestrator, QueryRouter, TextModel, _bounded_initial_analysis
 from app.data.workbook import QSRDataset
 
 
@@ -102,6 +102,64 @@ def test_groq_can_decline_an_out_of_scope_question_using_session_context(dataset
     assert state.route.intent == "UNSUPPORTED"
     assert '"recent_conversation"' in model.prompts[0]
     assert "Zomato and Swiggy" in model.prompts[0]
+
+
+@pytest.mark.parametrize(
+    ("question", "intent", "evidence_term"),
+    [
+        ("Why did monthly revenue change?", "OVERALL_METRICS", "revenue"),
+        ("Why is QuickBite Gurugram 04 leading?", "STORE_RANKINGS", "gurugram"),
+        ("Why is Zomato revenue greater than Swiggy?", "CHANNEL_PERFORMANCE", "zomato"),
+        ("Why is Veg Burger 5 leading?", "SKU_PERFORMANCE", "burger"),
+        ("Why is Hyderabad declining?", "CITY_REVENUE_TRENDS", "hyderabad"),
+        ("Why does weekend revenue differ?", "WEEKEND_VS_WEEKDAY", "weekend"),
+        ("Why does festive revenue differ?", "FESTIVE_VS_NORMAL", "festive"),
+        ("Why is ST012 declining?", "STORE_DECLINE_DIAGNOSIS", "st012"),
+    ],
+)
+def test_evidence_bound_follow_ups_recover_from_a_false_model_rejection(
+    question: str,
+    intent: str,
+    evidence_term: str,
+) -> None:
+    """Every required dashboard can support a related evidence-based follow-up.
+
+    Groq is still called first. This guards against it treating an observational
+    ``why`` question as unsupported solely because the workbook cannot prove a
+    causal relationship.
+    """
+    router = QueryRouter(StubModel({"intent": "UNSUPPORTED"}))
+    initial_analysis = _bounded_initial_analysis(
+        {"intent": intent, "summary": f"Verified analysis includes {evidence_term}.", "tool_result": {"evidence": evidence_term}}
+    )
+    assert initial_analysis is not None
+    route = router.route(
+        question,
+        conversation_history=[{"role": "assistant", "content": f"Verified analysis includes {evidence_term}.", "intent": intent}],
+        initial_analysis=initial_analysis,
+    )
+    assert route.intent == intent
+
+
+def test_context_fallback_does_not_turn_an_unrelated_why_question_into_an_analysis() -> None:
+    router = QueryRouter(StubModel({"intent": "UNSUPPORTED"}))
+    route = router.route(
+        "Why is the sky blue?",
+        conversation_history=[{"role": "assistant", "content": "Zomato leads channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+        initial_analysis={"intent": "CHANNEL_PERFORMANCE", "summary": "Zomato leads channel revenue.", "tool_result": {"channels": ["Zomato", "Swiggy"]}},
+    )
+    assert route.intent == "UNSUPPORTED"
+
+
+def test_bounded_initial_analysis_keeps_nested_verified_entity_values() -> None:
+    context = _bounded_initial_analysis(
+        {
+            "intent": "CHANNEL_PERFORMANCE",
+            "tool_result": {"channels": [{"channel": "Zomato", "revenue": 3651162.76}]},
+        }
+    )
+    assert context is not None
+    assert context["tool_result"]["channels"][0]["channel"] == "Zomato"
 
 
 def test_narrator_receives_initial_analysis_and_current_verified_evidence(dataset: QSRDataset) -> None:

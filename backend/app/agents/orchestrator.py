@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Sequence
@@ -117,7 +118,7 @@ class QueryRouter:
         initial_analysis: dict[str, Any] | None = None,
     ) -> Route:
         local_route = self._local_route(question)
-        context_route = self._context_route(question, conversation_history)
+        context_route = self._context_route(question, conversation_history, initial_analysis)
         if self._model is None:
             return local_route or context_route or Route("UNSUPPORTED", None)
 
@@ -129,9 +130,14 @@ class QueryRouter:
                 system_prompt=(
                     "You are the routing agent for a QSR analytics application. Return JSON only: "
                     '{"intent":"one allowed intent or UNSUPPORTED"}. Only choose an intent when the current '
-                    "question can be fully answered by one of the approved analyses. Never use a previous "
-                    "conversation topic to answer an unrelated question. Return UNSUPPORTED for general knowledge, "
-                    "real-world facts, and unsupported dataset requests. Allowed intents: " + ", ".join(self._routes_by_intent)
+                    "question can be answered by one of the approved analyses. A question may be a follow-up "
+                    "to the supplied session and initial analysis. For an evidence-bound follow-up asking why, "
+                    "to compare, or to explain a prior result, select the relevant prior intent: an observational "
+                    "explanation using verified revenue, orders, AOV, rankings, or trend evidence is in scope. "
+                    "Do not return UNSUPPORTED merely because the data cannot prove causation. Never use a "
+                    "previous conversation topic to answer an unrelated question. Return UNSUPPORTED for general "
+                    "knowledge, real-world facts, and unsupported dataset requests. Allowed intents: "
+                    + ", ".join(self._routes_by_intent)
                 ),
                 user_prompt=json.dumps(
                     {
@@ -144,7 +150,10 @@ class QueryRouter:
             )
             intent = response.get("intent")
             if intent == "UNSUPPORTED":
-                return Route("UNSUPPORTED", None)
+                # Groq remains the scope judge. A narrowly validated context route is
+                # allowed to correct a false rejection only when the follow-up refers
+                # to actual retained workbook evidence from this session.
+                return context_route or Route("UNSUPPORTED", None)
             model_route = self._routes_by_intent.get(intent)
             if model_route:
                 return model_route
@@ -159,18 +168,61 @@ class QueryRouter:
                 return route
         return None
 
-    def _context_route(self, question: str, conversation_history: Sequence[dict[str, str]]) -> Route | None:
-        """Keep simple referential follow-ups useful even in offline fallback mode."""
+    def _context_route(
+        self,
+        question: str,
+        conversation_history: Sequence[dict[str, str]],
+        initial_analysis: dict[str, Any] | None,
+    ) -> Route | None:
+        """Resolve a follow-up only when it is grounded in retained session evidence.
+
+        The browser sends a small snapshot of the first dashboard response. This lets
+        a natural question such as "Why is Zomato greater than Swiggy?" retain the
+        channel analysis context even if an LLM mistakes a non-causal explanation for
+        an out-of-scope request. It is deliberately not a general keyword router.
+        """
         normalized = question.casefold().strip()
-        referential_starts = ("that", "this", "those", "it ", "can you explain", "tell me more", "why did", "show that", "visualize that", "put that")
-        if not conversation_history:
+        explicit_referential_starts = (
+            "that",
+            "this",
+            "those",
+            "these",
+            "it ",
+            "they ",
+            "them ",
+            "can you explain",
+            "tell me more",
+            "show that",
+            "visualize that",
+            "put that",
+            "break it",
+            "drill down",
+        )
+        evidence_blocks: list[str] = []
+        candidate_routes: list[Route] = []
+
+        if isinstance(initial_analysis, dict):
+            initial_route = self._routes_by_intent.get(str(initial_analysis.get("intent", "")))
+            if initial_route:
+                candidate_routes.append(initial_route)
+            evidence_blocks.append(json.dumps(initial_analysis, default=str))
+
+        if not conversation_history and not candidate_routes:
             return None
         for turn in reversed(conversation_history):
             if turn.get("role") != "assistant":
                 continue
             route = self._routes_by_intent.get(turn.get("intent"))
-            if route and (normalized.startswith(referential_starts) or self._references_prior_evidence(normalized, turn.get("content", ""))):
-                return route
+            if route:
+                candidate_routes.append(route)
+            evidence_blocks.append(turn.get("content", ""))
+
+        if not candidate_routes:
+            return None
+        has_explicit_referential_cue = normalized.startswith(explicit_referential_starts)
+        references_evidence = self._references_prior_evidence(normalized, "\n".join(evidence_blocks))
+        if has_explicit_referential_cue or references_evidence:
+            return candidate_routes[0]
         return None
 
     @staticmethod
@@ -180,11 +232,14 @@ class QueryRouter:
         This permits natural follow-ups such as “why is Zomato greater than
         Swiggy?” but not unrelated questions after a prior analytics turn.
         """
-        ignored_words = {"about", "across", "after", "before", "could", "does", "from", "have", "into", "more", "than", "that", "their", "there", "these", "this", "through", "which", "while", "with", "would"}
-        question_words = {word.strip(".,?!:;()[]{}'\"") for word in question.split()}
-        prior_words = {word.strip(".,?!:;()[]{}'\"") for word in prior_answer.casefold().split()}
+        ignored_words = {
+            "about", "across", "after", "before", "could", "does", "from", "have", "into", "more", "than", "that", "their", "there", "these", "this", "through", "which", "while", "with", "would", "what", "when", "where", "whose", "will", "your", "they", "them", "then", "were", "been", "being", "because", "explain", "compare", "greater", "highest", "lowest", "performance",
+        }
+        question_words = set(re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)?", question.casefold()))
+        prior_words = set(re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)?", prior_answer.casefold()))
         comparable_words = {word for word in question_words & prior_words if len(word) >= 4 and word not in ignored_words}
         return bool(comparable_words)
+
 
 class InsightNarrator:
     """Turn verified output into a compact business answer without changing any figures."""
@@ -209,7 +264,9 @@ class InsightNarrator:
                     "findings and 1–2 practical actions. `current_verified_evidence` is the source of truth. "
                     "Use `initial_analysis` and recent conversation only to understand a follow-up's context; do not "
                     "treat browser-held evidence as more authoritative than the current verified result. Detailed "
-                    "rankings and metrics are rendered separately. "
+                    "rankings and metrics are rendered separately. For a follow-up asking why or asking for an "
+                    "explanation, describe observed contributors in the verified evidence and clearly avoid claiming "
+                    "that the observations prove causation. "
                     + (
                         "This is a follow-up: answer directly, keep recommendations empty, and provide at most two concise findings."
                         if state.response_mode == "follow_up"
@@ -380,25 +437,67 @@ def _bounded_initial_analysis(analysis: dict[str, Any] | None) -> dict[str, Any]
     if not isinstance(analysis, dict):
         return None
 
-    def trim(value: Any, depth: int = 0) -> Any:
+    def trim(
+        value: Any,
+        depth: int = 0,
+        *,
+        string_limit: int = 800,
+        list_limit: int = 8,
+        mapping_limit: int = 12,
+        max_depth: int = 4,
+    ) -> Any:
         if isinstance(value, str):
-            return value[:800]
+            return value[:string_limit]
         if isinstance(value, (int, float, bool)) or value is None:
             return value
-        if depth >= 3:
+        if depth >= max_depth:
             return "[omitted for prompt size]"
         if isinstance(value, list):
-            return [trim(item, depth + 1) for item in value[:8]]
+            return [
+                trim(
+                    item,
+                    depth + 1,
+                    string_limit=string_limit,
+                    list_limit=list_limit,
+                    mapping_limit=mapping_limit,
+                    max_depth=max_depth,
+                )
+                for item in value[:list_limit]
+            ]
         if isinstance(value, dict):
-            return {str(key)[:80]: trim(item, depth + 1) for key, item in list(value.items())[:12]}
-        return str(value)[:800]
+            return {
+                str(key)[:80]: trim(
+                    item,
+                    depth + 1,
+                    string_limit=string_limit,
+                    list_limit=list_limit,
+                    mapping_limit=mapping_limit,
+                    max_depth=max_depth,
+                )
+                for key, item in list(value.items())[:mapping_limit]
+            }
+        return str(value)[:string_limit]
 
     allowed = ("question", "intent", "summary", "tool_result", "investigation_result")
     compact = {key: trim(analysis[key]) for key in allowed if key in analysis}
     if not compact:
         return None
     if len(json.dumps(compact, default=str)) > 12_000:
-        return {key: compact[key] for key in ("question", "intent", "summary") if key in compact}
+        # Preserve representative verified rows rather than dropping the evidence
+        # completely. This matters for a later follow-up naming a store, channel,
+        # SKU, or declining-store identifier that may not appear in the prose
+        # summary. The strict shape limits keep the request bounded.
+        compact = {
+            key: trim(
+                analysis[key],
+                string_limit=180,
+                list_limit=4,
+                mapping_limit=8,
+                max_depth=4,
+            )
+            for key in allowed
+            if key in analysis
+        }
     return compact
 
 
