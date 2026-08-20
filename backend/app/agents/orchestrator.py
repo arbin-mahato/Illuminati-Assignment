@@ -112,13 +112,12 @@ class QueryRouter:
     def route(self, question: str, conversation_history: Sequence[dict[str, str]] = ()) -> Route:
         local_route = self._local_route(question)
         context_route = self._context_route(question, conversation_history)
-        if local_route is None and context_route is None and not self._is_dataset_related(question):
-            return Route("UNSUPPORTED", None)
         if self._model is None:
             return local_route or context_route or Route("UNSUPPORTED", None)
 
-        # A configured model plans every request. Local matching is only a validated
-        # contingency path when the model is unavailable or returns an unsupported plan.
+        # Groq receives the current question and bounded prior turns, and decides whether
+        # the request remains inside the QuickBite dataset scope. Local matching exists
+        # only as a no-model or service-failure contingency for the eight required flows.
         try:
             response = self._model.complete_json(
                 system_prompt=(
@@ -131,6 +130,8 @@ class QueryRouter:
                 user_prompt=json.dumps({"question": question, "recent_conversation": conversation_history}, default=str),
             )
             intent = response.get("intent")
+            if intent == "UNSUPPORTED":
+                return Route("UNSUPPORTED", None)
             model_route = self._routes_by_intent.get(intent)
             if model_route:
                 return model_route
@@ -171,19 +172,6 @@ class QueryRouter:
         prior_words = {word.strip(".,?!:;()[]{}'\"") for word in prior_answer.casefold().split()}
         comparable_words = {word for word in question_words & prior_words if len(word) >= 4 and word not in ignored_words}
         return bool(comparable_words)
-
-    @staticmethod
-    def _is_dataset_related(question: str) -> bool:
-        """Reject unrelated general-knowledge prompts before any model call."""
-        dataset_terms = (
-            "quickbite", "qsr", "revenue", "sales", "order", "aov", "average order",
-            "store", "channel", "sku", "product", "city", "weekend", "weekday", "festive",
-            "festival", "promotion", "demand", "burger", "pizza", "customer", "performance",
-            "declin", "month", "may", "june", "july", "zomato", "swiggy", "dine-in", "takeaway",
-        )
-        normalized = question.casefold()
-        return any(term in normalized for term in dataset_terms)
-
 
 class InsightNarrator:
     """Turn verified output into a compact business answer without changing any figures."""

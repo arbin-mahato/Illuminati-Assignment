@@ -14,6 +14,16 @@ class StubModel:
         return self.response
 
 
+class CapturingModel(StubModel):
+    def __init__(self, response: dict[str, object]) -> None:
+        super().__init__(response)
+        self.prompts: list[str] = []
+
+    def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, object]:
+        self.prompts.append(user_prompt)
+        return self.response
+
+
 @pytest.fixture(scope="module")
 def dataset() -> QSRDataset:
     return QSRDataset(Path(__file__).parents[2] / "data" / "QSR_Agentic_Insights_Dataset.xlsx")
@@ -70,6 +80,18 @@ def test_entity_based_follow_up_reuses_the_previous_approved_intent(dataset: QSR
     )
     assert state.route is not None
     assert state.route.intent == "CHANNEL_PERFORMANCE"
+
+
+def test_groq_can_decline_an_out_of_scope_question_using_session_context(dataset: QSRDataset) -> None:
+    model = CapturingModel({"intent": "UNSUPPORTED"})
+    state = AnalyticsOrchestrator(dataset, model).run(
+        "Who is the MOD?",
+        conversation_history=[{"role": "assistant", "content": "Zomato and Swiggy lead channel revenue.", "intent": "CHANNEL_PERFORMANCE"}],
+    )
+    assert state.route is not None
+    assert state.route.intent == "UNSUPPORTED"
+    assert '"recent_conversation"' in model.prompts[0]
+    assert "Zomato and Swiggy" in model.prompts[0]
 
 
 def test_blank_question_is_rejected(dataset: QSRDataset) -> None:
