@@ -47,8 +47,9 @@ def create_app(dataset: QSRDataset | None = None, orchestrator: AnalyticsOrchest
         allow_headers=["Content-Type"],
     )
 
-    @app.get("/api/health", response_model=HealthResponse, tags=["System"])
+    @app.api_route("/api/health", methods=["GET", "HEAD"], response_model=HealthResponse, tags=["System"])
     def health() -> HealthResponse:
+        """Provide a lightweight health check for browsers and HEAD-based monitors."""
         return HealthResponse(status="ok")
 
     @app.get("/api/metadata", response_model=DatasetMetadataResponse, tags=["System"])

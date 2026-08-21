@@ -18,6 +18,12 @@ def test_health_endpoint(client: TestClient) -> None:
     assert client.get("/api/health").json() == {"status": "ok"}
 
 
+def test_health_endpoint_accepts_head_for_uptime_monitors(client: TestClient) -> None:
+    response = client.head("/api/health")
+    assert response.status_code == 200
+    assert response.content == b""
+
+
 def test_metadata_endpoint(client: TestClient) -> None:
     response = client.get("/api/metadata")
     assert response.status_code == 200
